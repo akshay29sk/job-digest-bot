@@ -7,43 +7,48 @@ TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-# 🔗 Fetch jobs via Google (stable version)
+
+
+# 🔗 Fetch jobs from Indeed (RELIABLE)
 def fetch_jobs():
-    url = "https://www.google.com/search?q=product+owner+business+analyst+hiring+linkedin+india&num=20"
+    url = "https://in.indeed.com/jobs?q=product+owner+business+analyst&l=India"
 
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+        "User-Agent": "Mozilla/5.0"
     }
 
     res = requests.get(url, headers=headers)
 
     if res.status_code != 200:
-        print("Failed to fetch Google results")
+        print("Failed to fetch Indeed")
         return []
 
     soup = BeautifulSoup(res.text, "html.parser")
 
     jobs = []
 
-    for g in soup.find_all("div"):
-        link_tag = g.find("a", href=True)
-        title_tag = g.find("h3")
+    for card in soup.select(".job_seen_beacon")[:20]:
+        title_tag = card.select_one("h2 a")
+        company_tag = card.select_one(".companyName")
 
-        if link_tag and title_tag:
-            link = link_tag["href"]
+        if title_tag:
+            title = title_tag.text.strip()
+            link = "https://in.indeed.com" + title_tag.get("href")
 
-            if "linkedin.com" in link:
-                jobs.append({
-                    "title": title_tag.text.strip(),
-                    "desc": title_tag.text.strip(),
-                    "link": link
-                })
+            company = company_tag.text.strip() if company_tag else "Unknown"
+
+            jobs.append({
+                "title": title,
+                "desc": title,
+                "company": company,
+                "link": link
+            })
 
     print("Jobs fetched:", len(jobs))
-    return jobs[:20]
+    return jobs
 
 
-# 🧠 AI filter
+# 🧠 AI Filter
 def ai_filter(job_text):
     url = "https://api.openai.com/v1/chat/completions"
 
@@ -90,72 +95,41 @@ Reason: one line
         return "Score: 50 Reason: exception fallback"
 
 
-# 👤 recruiter extraction (basic)
-def extract_recruiter(text):
-    words = text.split()
-    for i, w in enumerate(words):
-        if w.lower() in ["by", "from"]:
-            if i + 2 < len(words):
-                return words[i+1] + " " + words[i+2]
-    return "Not found"
-
-
-# 📊 Build digest
+# 📊 Build Digest
 def build_digest(jobs):
     results = []
 
     for job in jobs:
-        text = job["desc"].lower()
+        text = job["title"].lower()
 
-        # Must match role
         if not any(x in text for x in ["business analyst", "product owner"]):
             continue
 
-        # Reject noise
         if any(x in text for x in ["product manager", "intern", "fresher"]):
             continue
 
-        ai_result = ai_filter(job["desc"])
+        ai_result = ai_filter(job["title"])
 
         try:
             score = int(ai_result.split()[1])
         except:
             score = 50
 
-        # Boost hiring intent
-        if any(x in text for x in ["hiring", "looking for", "urgent", "opening"]):
-            score += 15
-
-        # Email detection
-        emails = re.findall(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+", job["desc"])
-        email = emails[0] if emails else "Not found"
-
-        # Recruiter detection
-        recruiter = extract_recruiter(job["desc"])
-
-        # Suggested DM
-        dm = f"Hi {recruiter}, came across your hiring post. My experience aligns with Product Owner / Business Analyst roles in Agile environments. Would love to connect."
-
         if score >= 60:
-            results.append((score, job, ai_result, email, recruiter, dm))
+            results.append((score, job, ai_result))
 
     results.sort(reverse=True, key=lambda x: x[0])
     top = results[:5]
 
     if not top:
-        return "📊 No strong LinkedIn matches today."
+        return "📊 No strong matches today."
 
-    msg = "📊 LINKEDIN DAILY DIGEST (PO / BA)\n\n"
+    msg = "📊 DAILY JOB DIGEST (PO / BA)\n\n"
 
-    for i, (score, job, reason, email, recruiter, dm) in enumerate(top, 1):
+    for i, (score, job, reason) in enumerate(top, 1):
         msg += f"""🔥 {i}. {job['title']}
+🏢 {job['company']}
 {reason}
-
-👤 Recruiter: {recruiter}
-📧 Email: {email}
-
-💬 Suggested DM:
-{dm}
 
 🔗 {job['link']}
 
