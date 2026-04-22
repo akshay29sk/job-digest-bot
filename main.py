@@ -1,44 +1,36 @@
 import requests
 import os
 import re
-from bs4 import BeautifulSoup
+import xml.etree.ElementTree as ET
 
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 
 
-# 🔗 Fetch jobs from Naukri
+# 🔗 Indeed RSS Feed (Stable)
 def fetch_jobs():
-    url = "https://www.naukri.com/business-analyst-product-owner-jobs-in-india"
+    url = "https://in.indeed.com/rss?q=business+analyst+product+owner&l=India"
 
-    headers = {
-        "User-Agent": "Mozilla/5.0"
-    }
-
-    res = requests.get(url, headers=headers)
+    res = requests.get(url)
 
     if res.status_code != 200:
-        print("Failed to fetch Naukri")
+        print("Failed to fetch RSS")
         return []
 
-    soup = BeautifulSoup(res.text, "html.parser")
+    root = ET.fromstring(res.content)
 
     jobs = []
 
-    for card in soup.select("article.jobTuple")[:20]:
-        title_tag = card.select_one("a.title")
-        desc_tag = card.select_one(".job-description")
+    for item in root.findall(".//item")[:20]:
+        title = item.find("title").text
+        link = item.find("link").text
+        desc = item.find("description").text
 
-        if title_tag:
-            title = title_tag.text.strip()
-            link = title_tag.get("href")
-            desc = desc_tag.text if desc_tag else ""
-
-            jobs.append({
-                "title": title,
-                "desc": desc,
-                "link": link
-            })
+        jobs.append({
+            "title": title,
+            "desc": desc,
+            "link": link
+        })
 
     print("Jobs fetched:", len(jobs))
     return jobs
@@ -54,7 +46,6 @@ def filter_jobs(jobs):
         if not any(x in text for x in ["business analyst", "product owner"]):
             continue
 
-        # Extract emails
         emails = re.findall(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+", job["desc"])
 
         if emails:
