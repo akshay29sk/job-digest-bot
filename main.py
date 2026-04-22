@@ -7,9 +7,9 @@ CHAT_ID = os.getenv("CHAT_ID")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 
-# 🔗 Fetch LinkedIn Jobs (recent)
+# 🔗 Fetch LinkedIn Jobs via Google (WORKING METHOD)
 def fetch_jobs():
-    url = "https://www.linkedin.com/jobs/search/?keywords=product%20owner%20business%20analyst&f_TPR=r86400"
+    url = "https://www.google.com/search?q=site:linkedin.com/jobs+product+owner+business+analyst+india&num=20"
 
     headers = {
         "User-Agent": "Mozilla/5.0"
@@ -20,18 +20,17 @@ def fetch_jobs():
 
     jobs = []
 
-    for card in soup.select(".base-card")[:15]:
-        title = card.select_one("h3")
-        link = card.select_one("a")
+    for a in soup.select("a"):
+        link = a.get("href")
 
-        if title and link:
+        if link and "linkedin.com/jobs/view" in link:
             jobs.append({
-                "title": title.text.strip(),
-                "desc": title.text.strip(),
-                "link": link.get("href")
+                "title": "LinkedIn Job",
+                "desc": "Product Owner Business Analyst",
+                "link": link
             })
 
-    return jobs
+    return jobs[:15]
 
 
 # 🧠 AI Filter (SAFE)
@@ -72,7 +71,7 @@ Reason: one line
 
         if "choices" not in data:
             print("OpenAI Error:", data)
-            return "Score: 50 Reason: Fallback (API issue)"
+            return "Score: 50 Reason: Fallback"
 
         return data["choices"][0]["message"]["content"]
 
@@ -86,9 +85,8 @@ def build_digest(jobs):
     results = []
 
     for job in jobs:
-        text = job["title"].lower()
+        text = job["desc"].lower()
 
-        # ❌ Exclude unwanted roles
         if "product manager" in text:
             continue
 
@@ -97,7 +95,6 @@ def build_digest(jobs):
 
         ai_result = ai_filter(job["desc"])
 
-        # ✅ Safe score parsing
         try:
             score = int(ai_result.split()[1])
         except:
