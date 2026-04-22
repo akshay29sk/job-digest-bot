@@ -8,9 +8,9 @@ CHAT_ID = os.getenv("CHAT_ID")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 
-# 🔗 Fetch LinkedIn Jobs + Hiring Posts via Google
+# 🔗 Fetch LinkedIn Jobs + Posts via Google (Improved)
 def fetch_jobs():
-    url = 'https://www.google.com/search?q=site:linkedin.com+"hiring"+"business+analyst"+OR+"product+owner"&num=20'
+    url = 'https://www.google.com/search?q=site:linkedin.com+"hiring"+"business+analyst"+OR+"product+owner"+india&num=30'
 
     headers = {
         "User-Agent": "Mozilla/5.0"
@@ -21,32 +21,38 @@ def fetch_jobs():
 
     jobs = []
 
-    for a in soup.select("a"):
-        link = a.get("href")
+    for g in soup.select("div.g"):
+        link_tag = g.find("a")
+        title_tag = g.find("h3")
+        snippet = g.get_text()
 
-        if link and ("linkedin.com/posts" in link or "linkedin.com/jobs" in link):
-            jobs.append({
-                "title": "LinkedIn Opportunity",
-                "desc": a.text,
-                "link": link
-            })
+        if link_tag and title_tag:
+            link = link_tag.get("href")
+
+            if "linkedin.com" in link:
+                jobs.append({
+                    "title": title_tag.text.strip(),
+                    "desc": snippet,
+                    "link": link
+                })
 
     return jobs[:20]
 
 
-# 🧠 AI Filter (SAFE)
+# 🧠 AI Filter (Safe + Strict)
 def ai_filter(job_text):
     url = "https://api.openai.com/v1/chat/completions"
 
     prompt = f"""
-Filter strictly for:
+Strictly filter for:
 - Product Owner OR Business Analyst
 - Agile/Scrum roles
-- Mid/Senior level
+- 5+ years experience
 
 Reject:
 - Product Manager
-- Fresher/Intern roles
+- Fresher/Intern
+- Generic analyst roles
 
 Return:
 Score: number (0-100)
@@ -72,13 +78,23 @@ Reason: one line
 
         if "choices" not in data:
             print("OpenAI Error:", data)
-            return "Score: 50 Reason: Fallback"
+            return "Score: 50 Reason: fallback"
 
         return data["choices"][0]["message"]["content"]
 
     except Exception as e:
         print("AI Exception:", e)
-        return "Score: 50 Reason: Exception fallback"
+        return "Score: 50 Reason: exception fallback"
+
+
+# 🧠 Extract recruiter name (basic heuristic)
+def extract_recruiter(text):
+    words = text.split()
+    for i, w in enumerate(words):
+        if w.lower() in ["by", "from"]:
+            if i + 2 < len(words):
+                return words[i+1] + " " + words[i+2]
+    return "Not found"
 
 
 # 📊 Build Digest
@@ -88,32 +104,37 @@ def build_digest(jobs):
     for job in jobs:
         text = job["desc"].lower()
 
-        # Must match role
+        # 🎯 Role filter
         if not any(x in text for x in ["business analyst", "product owner"]):
             continue
 
-        # Exclude unwanted
-        if "product manager" in text or "intern" in text or "fresher" in text:
+        # ❌ Reject noise
+        if any(x in text for x in ["product manager", "intern", "fresher"]):
             continue
 
         ai_result = ai_filter(job["desc"])
 
-        # Safe score parsing
         try:
             score = int(ai_result.split()[1])
         except:
             score = 50
 
-        # Boost hiring posts
-        if any(x in text for x in ["hiring", "looking for", "opening"]):
-            score += 10
+        # 🔥 Boost hiring intent
+        if any(x in text for x in ["hiring", "looking for", "urgent", "opening"]):
+            score += 15
 
-        # Extract email if present
+        # 📧 Email detection
         emails = re.findall(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+", job["desc"])
-        email_text = emails[0] if emails else "Not found"
+        email = emails[0] if emails else "Not found"
+
+        # 👤 Recruiter detection
+        recruiter = extract_recruiter(job["desc"])
+
+        # 💬 Auto DM message
+        dm = f"Hi {recruiter}, came across your hiring post. My experience aligns with Product Owner / Business Analyst roles in Agile environments. Would love to connect."
 
         if score >= 60:
-            results.append((score, job, ai_result, email_text))
+            results.append((score, job, ai_result, email, recruiter, dm))
 
     results.sort(reverse=True, key=lambda x: x[0])
     top = results[:5]
@@ -123,10 +144,16 @@ def build_digest(jobs):
 
     msg = "📊 LINKEDIN DAILY DIGEST (PO / BA)\n\n"
 
-    for i, (score, job, reason, email) in enumerate(top, 1):
-        msg += f"""{i}. {job['title']}
+    for i, (score, job, reason, email, recruiter, dm) in enumerate(top, 1):
+        msg += f"""🔥 {i}. {job['title']}
 {reason}
-📧 {email}
+
+👤 Recruiter: {recruiter}
+📧 Email: {email}
+
+💬 Suggested DM:
+{dm}
+
 🔗 {job['link']}
 
 """
