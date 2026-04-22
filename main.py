@@ -67,8 +67,14 @@ Reason: one line
         }
     )
 
-    return res.json()["choices"][0]["message"]["content"]
+    data = res.json()
 
+    # ✅ IMPORTANT FIX (prevents crash)
+    if "choices" not in data:
+        print("OpenAI Error:", data)
+        return "Score: 50 Reason: Fallback"
+
+    return data["choices"][0]["message"]["content"]
 
 # 📊 Build digest
 def build_digest(jobs):
