@@ -7,9 +7,6 @@ TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-print("API KEY:", OPENAI_API_KEY)
-
-
 # 🔗 Fetch jobs via Google (stable version)
 def fetch_jobs():
     url = "https://www.google.com/search?q=product+owner+business+analyst+hiring+linkedin+india&num=20"
