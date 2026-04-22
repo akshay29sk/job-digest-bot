@@ -1,3 +1,4 @@
+print("API KEY:", OPENAI_API_KEY)
 import requests
 import os
 import re
