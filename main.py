@@ -4,11 +4,13 @@ from bs4 import BeautifulSoup
 
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-# 🔍 Fetch real jobs from Indeed
+
+# 🔗 LinkedIn Jobs (recent only)
 def fetch_jobs():
-    url = "https://in.indeed.com/jobs?q=product+owner+business+analyst&l=India"
-    
+    url = "https://www.linkedin.com/jobs/search/?keywords=product%20owner%20business%20analyst&f_TPR=r86400"
+
     headers = {
         "User-Agent": "Mozilla/5.0"
     }
@@ -18,78 +20,90 @@ def fetch_jobs():
 
     jobs = []
 
-    for card in soup.select(".job_seen_beacon")[:20]:
-        title = card.select_one("h2")
+    for card in soup.select(".base-card")[:15]:
+        title = card.select_one("h3")
         link = card.select_one("a")
 
         if title and link:
-            job_title = title.text.strip()
-            job_link = "https://in.indeed.com" + link.get("href")
-
             jobs.append({
-                "title": job_title,
-                "desc": job_title,
-                "link": job_link
+                "title": title.text.strip(),
+                "desc": title.text.strip(),
+                "link": link.get("href")
             })
 
     return jobs
 
 
-# 🎯 Filter rules (YOUR STRATEGY)
-def is_valid(job):
-    text = (job["title"] + job["desc"]).lower()
+# 🎯 AI filter
+def ai_filter(job_text):
+    url = "https://api.openai.com/v1/chat/completions"
 
-    if "product manager" in text:
-        return False
+    prompt = f"""
+Filter strictly for:
+- Product Owner OR Business Analyst
+- Agile/Scrum roles
+- Mid/Senior level
 
-    if not ("product owner" in text or "business analyst" in text):
-        return False
+Reject:
+- Product Manager
+- Fresher/Intern roles
 
-    if "intern" in text or "fresher" in text:
-        return False
+Return:
+Score: number (0-100)
+Reason: one line
+"""
 
-    return True
+    res = requests.post(
+        url,
+        headers={
+            "Authorization": f"Bearer {OPENAI_API_KEY}",
+            "Content-Type": "application/json"
+        },
+        json={
+            "model": "gpt-4o-mini",
+            "messages": [
+                {"role": "user", "content": job_text + "\n\n" + prompt}
+            ]
+        }
+    )
 
-
-# 🧠 Scoring
-def score(job):
-    text = (job["title"] + job["desc"]).lower()
-    score = 0
-
-    keywords = [
-        "agile", "scrum", "backlog",
-        "stakeholder", "b2b", "saas",
-        "platform", "uat"
-    ]
-
-    for k in keywords:
-        if k in text:
-            score += 1
-
-    return score
+    return res.json()["choices"][0]["message"]["content"]
 
 
 # 📊 Build digest
 def build_digest(jobs):
-    valid = []
+    results = []
 
     for job in jobs:
-        if is_valid(job):
-            s = score(job)
-            if s >= 2:
-                valid.append((s, job))
+        text = job["title"].lower()
 
-    valid.sort(reverse=True, key=lambda x: x[0])
-    top = valid[:5]
+        if "product manager" in text:
+            continue
+
+        if not ("product owner" in text or "business analyst" in text):
+            continue
+
+        ai_result = ai_filter(job["desc"])
+
+        try:
+            score = int(ai_result.split()[1])
+        except:
+            score = 0
+
+        if score >= 70:
+            results.append((score, job, ai_result))
+
+    results.sort(reverse=True, key=lambda x: x[0])
+    top = results[:5]
 
     if not top:
-        return "📊 No strong matches today. Will try again tomorrow."
+        return "📊 No strong LinkedIn matches today."
 
-    msg = "📊 DAILY JOB DIGEST (PO / BA)\n\n"
+    msg = "📊 LINKEDIN DAILY DIGEST\n\n"
 
-    for i, (s, job) in enumerate(top, 1):
+    for i, (score, job, reason) in enumerate(top, 1):
         msg += f"""{i}. {job['title']}
-Score: {s}
+{reason}
 🔗 {job['link']}
 
 """
@@ -97,7 +111,7 @@ Score: {s}
     return msg
 
 
-# 📩 Send to Telegram
+# 📩 Telegram
 def send(msg):
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
     requests.post(url, data={"chat_id": CHAT_ID, "text": msg})
