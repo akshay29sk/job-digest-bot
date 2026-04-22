@@ -1,58 +1,60 @@
 import requests
 import os
 import re
-import xml.etree.ElementTree as ET
 
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
+SERPAPI_KEY = os.getenv("SERPAPI_KEY")
 
 
-# 🔗 Indeed RSS Feed (Stable)
-def fetch_jobs():
-    url = "https://in.indeed.com/rss?q=business+analyst+product+owner&l=India"
+# 🔗 Fetch LinkedIn posts via SerpAPI (NO BLOCKING)
+def fetch_posts():
+    url = "https://serpapi.com/search.json"
 
-    res = requests.get(url)
+    params = {
+        "q": 'site:linkedin.com "hiring" "business analyst" OR "product owner"',
+        "api_key": SERPAPI_KEY,
+        "num": 20
+    }
 
-    if res.status_code != 200:
-        print("Failed to fetch RSS")
-        return []
+    res = requests.get(url, params=params)
+    data = res.json()
 
-    root = ET.fromstring(res.content)
+    posts = []
 
-    jobs = []
+    for result in data.get("organic_results", []):
+        link = result.get("link")
+        snippet = result.get("snippet", "")
+        title = result.get("title", "")
 
-    for item in root.findall(".//item")[:20]:
-        title = item.find("title").text
-        link = item.find("link").text
-        desc = item.find("description").text
+        if "linkedin.com" in link:
+            posts.append({
+                "title": title,
+                "desc": snippet,
+                "link": link
+            })
 
-        jobs.append({
-            "title": title,
-            "desc": desc,
-            "link": link
-        })
-
-    print("Jobs fetched:", len(jobs))
-    return jobs
+    print("Posts fetched:", len(posts))
+    return posts
 
 
-# 📧 Extract email-based opportunities
-def filter_jobs(jobs):
+# 📧 Extract only posts with emails
+def filter_posts(posts):
     results = []
 
-    for job in jobs:
-        text = (job["title"] + " " + job["desc"]).lower()
+    for post in posts:
+        text = post["desc"].lower()
 
         if not any(x in text for x in ["business analyst", "product owner"]):
             continue
 
-        emails = re.findall(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+", job["desc"])
+        emails = re.findall(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+", post["desc"])
 
         if emails:
             results.append({
-                "title": job["title"],
+                "title": post["title"],
                 "email": emails[0],
-                "link": job["link"]
+                "link": post["link"]
             })
 
     return results[:5]
@@ -67,18 +69,18 @@ def send(msg):
 # 🚀 Run
 if __name__ == "__main__":
     try:
-        jobs = fetch_jobs()
-        filtered = filter_jobs(jobs)
+        posts = fetch_posts()
+        filtered = filter_posts(posts)
 
         if not filtered:
-            send("📭 No email-based opportunities found today.")
+            send("📭 No email-based hiring posts found today.")
         else:
-            msg = "🔥 EMAIL-BASED JOB OPPORTUNITIES\n\n"
+            msg = "🔥 LINKEDIN HIRING POSTS (WITH EMAIL)\n\n"
 
-            for i, job in enumerate(filtered, 1):
-                msg += f"""{i}. {job['title']}
-📧 {job['email']}
-🔗 {job['link']}
+            for i, p in enumerate(filtered, 1):
+                msg += f"""{i}. {p['title']}
+📧 {p['email']}
+🔗 {p['link']}
 
 """
 
