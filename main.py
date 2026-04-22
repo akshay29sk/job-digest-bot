@@ -1,8 +1,8 @@
 import requests
 import os
 
-TOKEN = os.getenv("AAHiB1mVtZ_VufnRyj8qRzz4aCdI3ZBu6xE")
-CHAT_ID = os.getenv("8393912346")
+TOKEN = os.getenv("TELEGRAM_TOKEN")
+CHAT_ID = os.getenv("CHAT_ID"))
 
 def fetch_jobs():
     return [
