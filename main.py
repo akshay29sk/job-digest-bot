@@ -1,4 +1,3 @@
-print("API KEY:", OPENAI_API_KEY)
 import requests
 import os
 import re
@@ -7,6 +6,7 @@ from bs4 import BeautifulSoup
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+print("API KEY:", OPENAI_API_KEY)
 
 
 # 🔗 Fetch LinkedIn Jobs + Posts via Google (Improved)
