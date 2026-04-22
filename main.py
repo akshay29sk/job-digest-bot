@@ -1,5 +1,6 @@
 import requests
 import os
+import re
 from bs4 import BeautifulSoup
 
 TOKEN = os.getenv("TELEGRAM_TOKEN")
@@ -7,9 +8,9 @@ CHAT_ID = os.getenv("CHAT_ID")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 
-# 🔗 Fetch LinkedIn Jobs via Google (WORKING METHOD)
+# 🔗 Fetch LinkedIn Jobs + Hiring Posts via Google
 def fetch_jobs():
-    url = "https://www.google.com/search?q=site:linkedin.com/jobs+product+owner+business+analyst+india&num=20"
+    url = 'https://www.google.com/search?q=site:linkedin.com+"hiring"+"business+analyst"+OR+"product+owner"&num=20'
 
     headers = {
         "User-Agent": "Mozilla/5.0"
@@ -23,14 +24,14 @@ def fetch_jobs():
     for a in soup.select("a"):
         link = a.get("href")
 
-        if link and "linkedin.com/jobs/view" in link:
+        if link and ("linkedin.com/posts" in link or "linkedin.com/jobs" in link):
             jobs.append({
-                "title": "LinkedIn Job",
-                "desc": "Product Owner Business Analyst",
+                "title": "LinkedIn Opportunity",
+                "desc": a.text,
                 "link": link
             })
 
-    return jobs[:15]
+    return jobs[:20]
 
 
 # 🧠 AI Filter (SAFE)
@@ -87,21 +88,32 @@ def build_digest(jobs):
     for job in jobs:
         text = job["desc"].lower()
 
-        if "product manager" in text:
+        # Must match role
+        if not any(x in text for x in ["business analyst", "product owner"]):
             continue
 
-        if not ("product owner" in text or "business analyst" in text):
+        # Exclude unwanted
+        if "product manager" in text or "intern" in text or "fresher" in text:
             continue
 
         ai_result = ai_filter(job["desc"])
 
+        # Safe score parsing
         try:
             score = int(ai_result.split()[1])
         except:
             score = 50
 
+        # Boost hiring posts
+        if any(x in text for x in ["hiring", "looking for", "opening"]):
+            score += 10
+
+        # Extract email if present
+        emails = re.findall(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+", job["desc"])
+        email_text = emails[0] if emails else "Not found"
+
         if score >= 60:
-            results.append((score, job, ai_result))
+            results.append((score, job, ai_result, email_text))
 
     results.sort(reverse=True, key=lambda x: x[0])
     top = results[:5]
@@ -111,9 +123,10 @@ def build_digest(jobs):
 
     msg = "📊 LINKEDIN DAILY DIGEST (PO / BA)\n\n"
 
-    for i, (score, job, reason) in enumerate(top, 1):
+    for i, (score, job, reason, email) in enumerate(top, 1):
         msg += f"""{i}. {job['title']}
 {reason}
+📧 {email}
 🔗 {job['link']}
 
 """
