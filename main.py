@@ -6,41 +6,47 @@ from bs4 import BeautifulSoup
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+
 print("API KEY:", OPENAI_API_KEY)
 
 
-# 🔗 Fetch LinkedIn Jobs + Posts via Google (Improved)
+# 🔗 Fetch jobs via Google (stable version)
 def fetch_jobs():
-    url = 'https://www.google.com/search?q=site:linkedin.com+"hiring"+"business+analyst"+OR+"product+owner"+india&num=30'
+    url = "https://www.google.com/search?q=product+owner+business+analyst+hiring+linkedin+india&num=20"
 
     headers = {
-        "User-Agent": "Mozilla/5.0"
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
     }
 
     res = requests.get(url, headers=headers)
+
+    if res.status_code != 200:
+        print("Failed to fetch Google results")
+        return []
+
     soup = BeautifulSoup(res.text, "html.parser")
 
     jobs = []
 
-    for g in soup.select("div.g"):
-        link_tag = g.find("a")
+    for g in soup.find_all("div"):
+        link_tag = g.find("a", href=True)
         title_tag = g.find("h3")
-        snippet = g.get_text()
 
         if link_tag and title_tag:
-            link = link_tag.get("href")
+            link = link_tag["href"]
 
             if "linkedin.com" in link:
                 jobs.append({
                     "title": title_tag.text.strip(),
-                    "desc": snippet,
+                    "desc": title_tag.text.strip(),
                     "link": link
                 })
 
+    print("Jobs fetched:", len(jobs))
     return jobs[:20]
 
 
-# 🧠 AI Filter (Safe + Strict)
+# 🧠 AI filter
 def ai_filter(job_text):
     url = "https://api.openai.com/v1/chat/completions"
 
@@ -53,7 +59,6 @@ Strictly filter for:
 Reject:
 - Product Manager
 - Fresher/Intern
-- Generic analyst roles
 
 Return:
 Score: number (0-100)
@@ -88,7 +93,7 @@ Reason: one line
         return "Score: 50 Reason: exception fallback"
 
 
-# 🧠 Extract recruiter name (basic heuristic)
+# 👤 recruiter extraction (basic)
 def extract_recruiter(text):
     words = text.split()
     for i, w in enumerate(words):
@@ -98,18 +103,18 @@ def extract_recruiter(text):
     return "Not found"
 
 
-# 📊 Build Digest
+# 📊 Build digest
 def build_digest(jobs):
     results = []
 
     for job in jobs:
         text = job["desc"].lower()
 
-        # 🎯 Role filter
+        # Must match role
         if not any(x in text for x in ["business analyst", "product owner"]):
             continue
 
-        # ❌ Reject noise
+        # Reject noise
         if any(x in text for x in ["product manager", "intern", "fresher"]):
             continue
 
@@ -120,18 +125,18 @@ def build_digest(jobs):
         except:
             score = 50
 
-        # 🔥 Boost hiring intent
+        # Boost hiring intent
         if any(x in text for x in ["hiring", "looking for", "urgent", "opening"]):
             score += 15
 
-        # 📧 Email detection
+        # Email detection
         emails = re.findall(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+", job["desc"])
         email = emails[0] if emails else "Not found"
 
-        # 👤 Recruiter detection
+        # Recruiter detection
         recruiter = extract_recruiter(job["desc"])
 
-        # 💬 Auto DM message
+        # Suggested DM
         dm = f"Hi {recruiter}, came across your hiring post. My experience aligns with Product Owner / Business Analyst roles in Agile environments. Would love to connect."
 
         if score >= 60:
@@ -175,12 +180,8 @@ def send(msg):
 if __name__ == "__main__":
     try:
         jobs = fetch_jobs()
-        print("Jobs fetched:", len(jobs))
-
         msg = build_digest(jobs)
         print("Message:", msg)
-
         send(msg)
-
     except Exception as e:
         print("Main Error:", e)
