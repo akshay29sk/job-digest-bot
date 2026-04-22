@@ -6,9 +6,10 @@ from bs4 import BeautifulSoup
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 
-# 🔗 Fetch LinkedIn hiring posts via Google
-def fetch_posts():
-    url = "https://www.google.com/search?q=site:linkedin.com+\"hiring\"+\"business+analyst\"+OR+\"product+owner\"+email&num=30"
+
+# 🔗 Fetch jobs from Naukri
+def fetch_jobs():
+    url = "https://www.naukri.com/business-analyst-product-owner-jobs-in-india"
 
     headers = {
         "User-Agent": "Mozilla/5.0"
@@ -17,56 +18,50 @@ def fetch_posts():
     res = requests.get(url, headers=headers)
 
     if res.status_code != 200:
-        print("Failed to fetch Google")
+        print("Failed to fetch Naukri")
         return []
 
     soup = BeautifulSoup(res.text, "html.parser")
 
-    posts = []
+    jobs = []
 
-    for g in soup.find_all("div"):
-        link_tag = g.find("a", href=True)
-        title_tag = g.find("h3")
+    for card in soup.select("article.jobTuple")[:20]:
+        title_tag = card.select_one("a.title")
+        desc_tag = card.select_one(".job-description")
 
-        if link_tag and title_tag:
-            link = link_tag["href"]
-            text = g.get_text()
+        if title_tag:
+            title = title_tag.text.strip()
+            link = title_tag.get("href")
+            desc = desc_tag.text if desc_tag else ""
 
-            # Only LinkedIn posts
-            if "linkedin.com/posts" in link:
-                posts.append({
-                    "title": title_tag.text.strip(),
-                    "desc": text,
-                    "link": link
-                })
+            jobs.append({
+                "title": title,
+                "desc": desc,
+                "link": link
+            })
 
-    print("Posts fetched:", len(posts))
-    return posts[:25]
+    print("Jobs fetched:", len(jobs))
+    return jobs
 
 
-# 📊 Extract only HIGH VALUE posts (email present)
-def filter_posts(posts):
+# 📧 Extract email-based opportunities
+def filter_jobs(jobs):
     results = []
 
-    for post in posts:
-        text = post["desc"].lower()
+    for job in jobs:
+        text = (job["title"] + " " + job["desc"]).lower()
 
-        # Must contain role
         if not any(x in text for x in ["business analyst", "product owner"]):
             continue
 
-        # Must be hiring signal
-        if not any(x in text for x in ["hiring", "looking for", "opening"]):
-            continue
-
-        # Extract email
-        emails = re.findall(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+", post["desc"])
+        # Extract emails
+        emails = re.findall(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+", job["desc"])
 
         if emails:
             results.append({
-                "title": post["title"],
+                "title": job["title"],
                 "email": emails[0],
-                "link": post["link"]
+                "link": job["link"]
             })
 
     return results[:5]
@@ -81,18 +76,18 @@ def send(msg):
 # 🚀 Run
 if __name__ == "__main__":
     try:
-        posts = fetch_posts()
-        filtered = filter_posts(posts)
+        jobs = fetch_jobs()
+        filtered = filter_jobs(jobs)
 
         if not filtered:
-            send("📭 No email-based hiring posts found today.")
+            send("📭 No email-based opportunities found today.")
         else:
-            msg = "🔥 HIGH VALUE LINKEDIN POSTS (WITH EMAIL)\n\n"
+            msg = "🔥 EMAIL-BASED JOB OPPORTUNITIES\n\n"
 
-            for i, p in enumerate(filtered, 1):
-                msg += f"""{i}. {p['title']}
-📧 {p['email']}
-🔗 {p['link']}
+            for i, job in enumerate(filtered, 1):
+                msg += f"""{i}. {job['title']}
+📧 {job['email']}
+🔗 {job['link']}
 
 """
 
