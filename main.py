@@ -1,6 +1,6 @@
 # =====================================
 # LinkedIn Hiring Radar
-# Version: v0.2.7
+# Version: v0.2.8
 # File: main.py
 # =====================================
 
@@ -107,6 +107,20 @@ def process(posts):
 
     roles = ROLE_MAP.get(SEARCH_QUERY.lower(), [SEARCH_QUERY.lower()])
 
+    # 🔥 STRICT INTENT KEYWORDS
+    intent_keywords = [
+        "hiring",
+        "we are hiring",
+        "looking for",
+        "job opening",
+        "apply",
+        "send your resume",
+        "share your resume",
+        "email your resume",
+        "position",
+        "vacancy"
+    ]
+
     for p in posts:
         text = p.get("content") or ""
         link = p.get("linkedinUrl")
@@ -115,13 +129,17 @@ def process(posts):
             continue
         seen.add(link)
 
+        # Clean text
         clean = re.sub(r"#\w+", "", text.lower())
 
-        if not any(x in clean for x in ["hiring","job","opening","apply"]):
+        # 🔥 STRICT INTENT FILTER
+        if not any(k in clean for k in intent_keywords):
             continue
 
-        role_match = any(r in clean for r in roles)
+        # 🔥 STRICT ROLE MATCH (avoid partial matches like "owners")
+        role_match = any(f" {r} " in f" {clean} " for r in roles)
 
+        # Email extraction
         emails = re.findall(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+", text)
         has_email = bool(emails)
         email = emails[0] if has_email else "Not found"
@@ -136,6 +154,10 @@ def process(posts):
             continue
 
         score = sim + (0.3 if has_email else 0)
+
+        # 🔥 BOOST real hiring posts
+        if "apply" in clean or "send your resume" in clean:
+            score += 0.2
 
         obj = {
             "email": email,
