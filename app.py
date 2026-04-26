@@ -65,14 +65,17 @@ if st.button("🚀 Run Search"):
 
     with st.spinner("Fetching jobs..."):
 
-        # Set env vars
+        # ✅ ENV VARIABLES (ALL REQUIRED)
         os.environ["SEARCH_QUERY"] = search
         os.environ["ROLE_KEYWORDS"] = roles
+        os.environ["HIRING_KEYWORDS"] = "hiring, looking, urgent, immediate joiner, send resume, share cv"
         os.environ["EMAIL_MODE"] = "both"  # relaxed for testing
         os.environ["RESULT_LIMIT"] = str(RESULT_LIMIT)
         os.environ["LOCATION_KEYWORDS"] = "global"
+        os.environ["MAX_POSTS"] = "100"
+        os.environ["POSTED_LIMIT"] = "24h"
 
-        # 🔥 FIXED EXECUTION
+        # 🔥 CORRECT EXECUTION
         result = subprocess.run(
             [sys.executable, "main.py"],
             capture_output=True,
@@ -83,7 +86,7 @@ if st.button("🚀 Run Search"):
 
     st.success("Done!")
 
-    # 🔍 Debug info
+    # 🔍 DEBUG INFO
     st.write("Working directory:", os.getcwd())
     st.text_area("RAW OUTPUT", output, height=300)
 
