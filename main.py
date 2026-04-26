@@ -6,13 +6,12 @@ TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 APIFY_TOKEN = os.getenv("APIFY_TOKEN")
 
-# 🔥 dynamic search query
 SEARCH_QUERY = os.getenv("SEARCH_QUERY", "hiring business analyst OR product owner email")
 
-ACTOR_ID = "harvestapi/linkedin-post-search"
+# ✅ FIXED ACTOR ID
+ACTOR_ID = "harvestapi~linkedin-post-search"
 
 
-# 🚀 Fetch posts
 def fetch_posts():
     url = f"https://api.apify.com/v2/acts/{ACTOR_ID}/run-sync-get-dataset-items?token={APIFY_TOKEN}"
 
@@ -35,7 +34,6 @@ def fetch_posts():
     return posts
 
 
-# 🎯 Filter posts
 def filter_posts(posts):
     results = []
     seen = set()
@@ -47,15 +45,12 @@ def filter_posts(posts):
         if not text or not link:
             continue
 
-        # Role filter
         if not any(x in text for x in ["business analyst", "product owner"]):
             continue
 
-        # Hiring intent
         if not any(x in text for x in ["hiring", "looking", "opening"]):
             continue
 
-        # Extract emails
         emails = re.findall(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+", text)
 
         if not emails:
@@ -74,13 +69,11 @@ def filter_posts(posts):
     return results[:5]
 
 
-# 📩 Telegram
 def send(msg):
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
     requests.post(url, data={"chat_id": CHAT_ID, "text": msg})
 
 
-# 🧾 Message
 def build_message(results):
     if not results:
         return f"📭 No results today.\n\n🔎 Query: {SEARCH_QUERY}"
@@ -97,7 +90,6 @@ def build_message(results):
     return msg
 
 
-# ▶️ Run
 if __name__ == "__main__":
     try:
         posts = fetch_posts()
