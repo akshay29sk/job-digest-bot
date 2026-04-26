@@ -1,213 +1,95 @@
-# =====================================
-# LinkedIn Hiring Radar
-# Version: v0.1.8
-# File: main.py
-# =====================================
-
-import requests
 import os
-import re
-import time
 import json
-from functools import lru_cache
-from sentence_transformers import SentenceTransformer, util
-from huggingface_hub import login
+
+from query_builder import build_queries
+from scoring import (
+    calculate_intent_score,
+    calculate_role_score,
+    is_irrelevant,
+    final_score
+)
 
 # ==============================
-# 🔐 HF LOGIN
+# ENV INPUTS
 # ==============================
-hf_token = os.getenv("HF_TOKEN")
-if hf_token:
-    hf_token = hf_token.strip()
-    login(token=hf_token)
+SEARCH_QUERY = os.getenv("SEARCH_QUERY", "product owner")
+LOCATION = os.getenv("LOCATION_KEYWORDS", "")
+RESULT_LIMIT = int(os.getenv("RESULT_LIMIT", 20))
 
 # ==============================
-# 🧠 MODEL CACHE
+# MOCK / EXISTING FETCH FUNCTION
+# Replace this with your real function
 # ==============================
-@lru_cache(maxsize=1)
-def get_model():
-    return SentenceTransformer('all-MiniLM-L6-v2')
-
-model = get_model()
-
-# ==============================
-# ENV
-# ==============================
-def get_env(name, default=None):
-    val = os.getenv(name)
-    return val if val else default
-
-SEARCH_QUERY = get_env("SEARCH_QUERY")
-APIFY_TOKEN = get_env("APIFY_TOKEN")
-
-POSTED_LIMIT = get_env("POSTED_LIMIT", "24h")
-MAX_POSTS = int(get_env("MAX_POSTS", "50"))
-RESULT_LIMIT = int(get_env("RESULT_LIMIT", "20"))
-EMAIL_MODE = get_env("EMAIL_MODE", "prefer_email").lower()
-
-ACTOR_ID = "harvestapi~linkedin-post-search"
-
-# ==============================
-# QUERY VARIANTS
-# ==============================
-def generate_queries(base):
-    base = base.lower()
-    return list(set([
-        base,
-        base.replace("hiring", "looking for"),
-        base.replace("hiring", "job opening")
-    ]))
-
-# ==============================
-# FETCH POSTS
-# ==============================
-def fetch_posts():
-    all_posts = []
-    queries = generate_queries(SEARCH_QUERY)
-
-    for q in queries:
-        payload = {
-            "maxPosts": max(5, MAX_POSTS // len(queries)),
-            "searchQueries": [q],
-            "postedLimit": POSTED_LIMIT,
-            "sortBy": "date"
+def fetch_linkedin_posts(query):
+    """
+    Expected return format:
+    [
+        {
+            "content": "...",
+            "link": "...",
+            "email": "...",
+            "semantic_score": 0.0
         }
+    ]
+    """
+    # 👉 Replace with your real scraping/API logic
+    return []
 
-        run = requests.post(
-            f"https://api.apify.com/v2/acts/{ACTOR_ID}/runs?token={APIFY_TOKEN}",
-            json=payload
-        ).json()
-
-        if "data" not in run:
-            continue
-
-        run_id = run["data"]["id"]
-
-        for _ in range(20):
-            status = requests.get(
-                f"https://api.apify.com/v2/actor-runs/{run_id}?token={APIFY_TOKEN}"
-            ).json()
-
-            if status["data"]["status"] == "SUCCEEDED":
-                dataset_id = status["data"]["defaultDatasetId"]
-                break
-
-            time.sleep(3)
-
-        posts = requests.get(
-            f"https://api.apify.com/v2/datasets/{dataset_id}/items?clean=true&token={APIFY_TOKEN}"
-        ).json()
-
-        all_posts.extend(posts)
-
-    return all_posts
 
 # ==============================
-# PROCESS POSTS (ROLE-AWARE)
+# QUERY EXPANSION
 # ==============================
-def process_posts(posts):
-    results = []
-    seen = set()
+queries = build_queries(SEARCH_QUERY, LOCATION)
 
-    query_embedding = model.encode(SEARCH_QUERY)
-
-    # 🔥 Extract role keywords
-    clean_query = SEARCH_QUERY.lower().replace("hiring", "").strip()
-    role_words = clean_query.split()
-
-    for post in posts:
-        text = (post.get("content") or "")
-        lower_text = text.lower()
-        link = post.get("linkedinUrl")
-
-        if not text or not link or link in seen:
-            continue
-
-        seen.add(link)
-
-        # Intent filter
-        if not any(x in lower_text for x in ["hiring", "job", "role", "opening", "apply"]):
-            continue
-
-        # 🔥 ROLE FILTER (MAIN FIX)
-        if role_words:
-            if not any(word in lower_text for word in role_words):
-                continue
-
-        # Email extraction
-        emails = re.findall(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+", text)
-        emails = [e.split("hashtag")[0] for e in emails]
-
-        has_email = bool(emails)
-        email = emails[0] if has_email else "Not found"
-
-        if EMAIL_MODE == "only_email" and not has_email:
-            continue
-        if EMAIL_MODE == "no_email" and has_email:
-            continue
-
-        # Semantic scoring
-        post_embedding = model.encode(text[:500])
-        semantic_score = util.cos_sim(query_embedding, post_embedding).item()
-
-        if semantic_score < 0.15:
-            continue
-
-        score = semantic_score
-
-        if has_email:
-            score += 0.3
-        if "urgent" in lower_text or "immediate" in lower_text:
-            score += 0.2
-
-        results.append({
-            "email": email,
-            "link": link,
-            "content": text,
-            "score": round(score, 2),
-            "semantic_score": round(semantic_score, 2)
-        })
-
-    print("RESULT COUNT:", len(results))
-
-    # 🔥 EMAIL-FIRST SORTING
-    results.sort(
-        key=lambda x: (
-            x["email"] == "Not found",
-            -x["score"]
-        )
-    )
-
-    return results[:RESULT_LIMIT]
+all_results = []
 
 # ==============================
-# TELEGRAM
+# FETCH + SCORE
 # ==============================
-def send(results):
-    TOKEN = os.getenv("TELEGRAM_TOKEN")
-    CHAT_ID = os.getenv("CHAT_ID")
+for query in queries:
+    results = fetch_linkedin_posts(query)
 
-    if not TOKEN or not CHAT_ID:
-        return
+    for r in results:
+        content = r.get("content", "")
+        semantic_score = r.get("semantic_score", 0)
 
-    if not results:
-        msg = f"📭 No results\n\n🔎 {SEARCH_QUERY}"
-    else:
-        msg = f"🔥 {SEARCH_QUERY}\n\n"
-        for r in results[:5]:
-            msg += f"📧 {r['email']}\n🔗 {r['link']}\n\n"
+        intent_score = calculate_intent_score(content)
+        role_score = calculate_role_score(content)
 
-    requests.post(
-        f"https://api.telegram.org/bot{TOKEN}/sendMessage",
-        data={"chat_id": CHAT_ID, "text": msg}
-    )
+        # 🔴 FILTER 1: Must be hiring intent
+        if intent_score < 2:
+            continue
+
+        # 🔴 FILTER 2: Remove irrelevant roles
+        if is_irrelevant(content, role_score):
+            continue
+
+        score = final_score(semantic_score, intent_score, role_score)
+
+        r["intent_score"] = intent_score
+        r["role_score"] = role_score
+        r["score"] = round(score, 2)
+
+        all_results.append(r)
+
 
 # ==============================
-# RUN
+# SORT + DEDUP
 # ==============================
-if __name__ == "__main__":
-    posts = fetch_posts()
-    results = process_posts(posts)
+# Deduplicate by link
+unique = {}
+for r in all_results:
+    unique[r["link"]] = r
 
-    send(results)
-    print(json.dumps(results))
+all_results = list(unique.values())
+
+# Sort by score
+all_results = sorted(all_results, key=lambda x: x["score"], reverse=True)
+
+# Limit
+final_results = all_results[:RESULT_LIMIT]
+
+# ==============================
+# OUTPUT
+# ==============================
+print(json.dumps(final_results))
