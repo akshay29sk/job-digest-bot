@@ -5,6 +5,7 @@ import re
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 APIFY_TOKEN = os.getenv("APIFY_TOKEN")
+print("APIFY TOKEN:", APIFY_TOKEN)
 
 SEARCH_QUERY = os.getenv("SEARCH_QUERY", "hiring business analyst OR product owner email")
 
