@@ -1,3 +1,9 @@
+# =====================================
+# LinkedIn Hiring Radar
+# Version: v0.2.0
+# File: app.py
+# =====================================
+
 import streamlit as st
 import subprocess
 import os
@@ -40,8 +46,8 @@ st.title("🔥 LinkedIn Hiring Radar")
 # ==============================
 search = st.text_input(
     "🔎 Search Query",
-    value="product owner",
-    placeholder="e.g. product owner, business analyst, product manager"
+    value="hiring product owner",
+    placeholder="e.g. hiring product owner, business analyst, product manager"
 )
 
 roles = st.text_input("🎯 Role Keywords (Optional)", "")
@@ -52,7 +58,7 @@ posted_limit = st.selectbox(
     index=2
 )
 
-# Location
+# Location filter
 location_options = ["india", "pune", "mumbai", "bangalore", "hyderabad", "remote"]
 selected_locations = st.multiselect("📍 Location", location_options)
 location_str = ", ".join(selected_locations) if selected_locations else "global"
@@ -100,11 +106,12 @@ CACHE_FILE = f"cache_{cache_key}.json"
 # BUTTONS
 # ==============================
 col1, col2 = st.columns(2)
+
 run_btn = col1.button("🚀 Run Search (Cached)")
 refresh_btn = col2.button("🔄 Refresh (API Call)")
 
 # ==============================
-# BACKEND
+# BACKEND CALL
 # ==============================
 def run_backend():
     os.environ["SEARCH_QUERY"] = search
@@ -136,7 +143,7 @@ if run_btn or refresh_btn:
     results = []
     result = None
 
-    # Load from cache
+    # Cache logic
     if run_btn and os.path.exists(CACHE_FILE):
         results = json.load(open(CACHE_FILE))
         st.success("⚡ Loaded from cache")
@@ -146,28 +153,31 @@ if run_btn or refresh_btn:
             result = run_backend()
 
         # ==============================
-        # DEBUG
+        # DEBUG PANEL
         # ==============================
         with st.expander("🧪 Debug Info", expanded=False):
+
             if result.returncode != 0:
-                st.error("Backend Error")
+                st.error("❌ Backend Error")
                 st.text(result.stderr)
             else:
-                st.info("Backend executed successfully")
+                st.info("✅ Backend executed successfully")
 
             if result.stdout:
+                st.text("Raw Output:")
                 st.text(result.stdout[:1200])
             else:
-                st.warning("No output")
+                st.warning("No output received")
 
         # ==============================
-        # PARSE JSON
+        # SAFE JSON PARSING
         # ==============================
         try:
             match = re.search(r"\[.*\]", result.stdout, re.DOTALL)
             results = json.loads(match.group(0)) if match else []
         except:
-            st.error("Parsing failed")
+            st.error("❌ Parsing failed")
+            st.text(result.stdout[:1000])
             st.stop()
 
         json.dump(results, open(CACHE_FILE, "w"))
@@ -179,28 +189,22 @@ if run_btn or refresh_btn:
     st.markdown("## 🎯 Results")
 
     if not results:
-        st.warning("⚠️ No relevant results found")
+        st.warning("⚠️ No results found")
     else:
         for r in results:
             st.markdown("---")
 
-            st.caption(
-                f"⭐ Score: {r.get('score',0)} | "
-                f"🎯 Role Match: {r.get('role_score',0)} | "
-                f"⚡ Intent: {r.get('intent_score',0)}"
-            )
+            st.caption(f"⭐ Score: {r.get('score')} | 🧠 Semantic: {r.get('semantic_score')}")
 
-            # Email
-            if r.get("email") and r["email"] != "Not found":
-                st.success(f"📧 {r['email']}")
+            if r.get("email") != "Not found":
+                st.success(r["email"])
             else:
-                st.caption("No Email Found")
+                st.caption("No Email")
 
-            # Content
-            st.write(r.get("content", "")[:400])
+            if r.get("content"):
+                st.write(r["content"][:400])
 
-            # Link
-            st.markdown(f"[🔗 Open Post]({r.get('link','#')})")
+            st.markdown(f"[🔗 Open Post]({r.get('link')})")
 
 # ==============================
 # FOOTER
