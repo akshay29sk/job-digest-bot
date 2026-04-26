@@ -4,7 +4,7 @@ import os
 import json
 import sys
 
-# 🔐 Load secrets into env
+# 🔐 Load secrets
 for key, value in st.secrets.items():
     os.environ[key] = value
 
@@ -52,32 +52,56 @@ mode = st.selectbox("Email Mode", ["prefer_email", "only_email", "both", "no_ema
 
 RESULT_LIMIT = 20
 
+# Cache file per query
+CACHE_FILE = f"cache_{search.replace(' ', '_')}.txt"
+
 # ==============================
-# 🚀 RUN
+# 🚀 BUTTONS
 # ==============================
-if st.button("🚀 Run Search"):
+colA, colB = st.columns(2)
+
+run_search = colA.button("🚀 Run Search (Use Cache)")
+refresh = colB.button("🔄 Refresh (Costs API)")
+
+# ==============================
+# 🧠 FETCH LOGIC
+# ==============================
+if run_search or refresh:
 
     data["searches"] += 1
     save_data(data)
 
+    use_cache = run_search and os.path.exists(CACHE_FILE)
+
     with st.spinner("Fetching jobs..."):
 
-        os.environ["SEARCH_QUERY"] = search
-        os.environ["ROLE_KEYWORDS"] = roles
-        os.environ["HIRING_KEYWORDS"] = "hiring, looking, urgent, immediate joiner, send resume, share cv"
-        os.environ["EMAIL_MODE"] = mode
-        os.environ["RESULT_LIMIT"] = str(RESULT_LIMIT)
-        os.environ["LOCATION_KEYWORDS"] = "global"
-        os.environ["MAX_POSTS"] = "100"
-        os.environ["POSTED_LIMIT"] = "24h"
+        if use_cache:
+            with open(CACHE_FILE, "r") as f:
+                output = f.read()
+            st.success("⚡ Loaded from cache (no cost)")
+        else:
+            os.environ["SEARCH_QUERY"] = search
+            os.environ["ROLE_KEYWORDS"] = roles
+            os.environ["HIRING_KEYWORDS"] = "hiring, looking, urgent, immediate joiner, send resume, share cv"
+            os.environ["EMAIL_MODE"] = mode
+            os.environ["RESULT_LIMIT"] = str(RESULT_LIMIT)
+            os.environ["LOCATION_KEYWORDS"] = "global"
+            os.environ["MAX_POSTS"] = "30"  # 🔥 cost reduced
+            os.environ["POSTED_LIMIT"] = "24h"
 
-        result = subprocess.run(
-            [sys.executable, "main.py"],
-            capture_output=True,
-            text=True
-        )
+            result = subprocess.run(
+                [sys.executable, "main.py"],
+                capture_output=True,
+                text=True
+            )
 
-        output = result.stdout + "\n\nERROR:\n" + result.stderr
+            output = result.stdout + "\n\nERROR:\n" + result.stderr
+
+            # Save to cache
+            with open(CACHE_FILE, "w") as f:
+                f.write(output)
+
+            st.success("✅ Fresh data fetched (API used)")
 
     # ==============================
     # 📊 PARSE OUTPUT
@@ -101,7 +125,6 @@ if st.button("🚀 Run Search"):
     # 📦 PREMIUM DISPLAY
     # ==============================
     st.markdown("---")
-
     st.subheader(f"🎯 Results ({len(results)})")
 
     emails_count = sum(1 for r in results if r[0] != "Not found")
@@ -119,7 +142,6 @@ if st.button("🚀 Run Search"):
 
                 col1, col2 = st.columns([1, 6])
 
-                # Index badge
                 with col1:
                     st.markdown(f"""
                     <div style="
@@ -129,22 +151,15 @@ if st.button("🚀 Run Search"):
                         text-align:center;
                         padding:12px;
                         font-weight:bold;
-                        font-size:16px;
                     ">
                         #{i}
                     </div>
                     """, unsafe_allow_html=True)
 
-                # Content
                 with col2:
-
                     if has_email:
                         st.markdown("🟢 **Email Found**")
-                        st.text_input(
-                            label="",
-                            value=email,
-                            key=f"email_{i}"
-                        )
+                        st.text_input("", email, key=f"email_{i}")
                     else:
                         st.markdown("🔴 *No Email Available*")
 
