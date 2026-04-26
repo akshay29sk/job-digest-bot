@@ -1,6 +1,6 @@
 # =====================================
 # LinkedIn Hiring Radar
-# Version: v0.2.8
+# Version: v0.2.9
 # File: main.py
 # =====================================
 
@@ -97,6 +97,9 @@ def process(posts):
     fallback = []
     seen = set()
 
+    if not SEARCH_QUERY:
+        return []
+
     query_emb = model.encode(SEARCH_QUERY)
 
     ROLE_MAP = {
@@ -107,18 +110,10 @@ def process(posts):
 
     roles = ROLE_MAP.get(SEARCH_QUERY.lower(), [SEARCH_QUERY.lower()])
 
-    # 🔥 STRICT INTENT KEYWORDS
     intent_keywords = [
-        "hiring",
-        "we are hiring",
-        "looking for",
-        "job opening",
-        "apply",
-        "send your resume",
-        "share your resume",
-        "email your resume",
-        "position",
-        "vacancy"
+        "hiring", "we are hiring", "looking for", "job opening",
+        "apply", "send your resume", "share your resume",
+        "email your resume", "position", "vacancy"
     ]
 
     for p in posts:
@@ -132,14 +127,22 @@ def process(posts):
         # Clean text
         clean = re.sub(r"#\w+", "", text.lower())
 
-        # 🔥 STRICT INTENT FILTER
-        if not any(k in clean for k in intent_keywords):
-            continue
+        # ==============================
+        # INTENT LOGIC
+        # ==============================
+        intent_match = any(k in clean for k in intent_keywords)
+        fallback_intent = any(x in clean for x in ["hiring", "job", "opening"])
 
-        # 🔥 STRICT ROLE MATCH (avoid partial matches like "owners")
+        allow_fallback = not intent_match
+
+        # ==============================
+        # ROLE MATCH
+        # ==============================
         role_match = any(f" {r} " in f" {clean} " for r in roles)
 
-        # Email extraction
+        # ==============================
+        # EMAIL
+        # ==============================
         emails = re.findall(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+", text)
         has_email = bool(emails)
         email = emails[0] if has_email else "Not found"
@@ -147,24 +150,32 @@ def process(posts):
         if EMAIL_MODE == "only_email" and not has_email:
             continue
 
+        # ==============================
+        # SEMANTIC
+        # ==============================
         emb = model.encode(text[:400])
         sim = util.cos_sim(query_emb, emb).item()
 
-        if sim < 0.10:
+        # Relaxed filter
+        if sim < 0.08 and not allow_fallback:
             continue
 
         score = sim + (0.3 if has_email else 0)
 
-        # 🔥 BOOST real hiring posts
+        # Boost strong hiring signals
         if "apply" in clean or "send your resume" in clean:
             score += 0.2
+
+        # Final safety filter
+        if not intent_match and sim < 0.15:
+            continue
 
         obj = {
             "email": email,
             "link": link,
             "content": text,
-            "score": round(score,2),
-            "semantic_score": round(sim,2)
+            "score": round(score, 2),
+            "semantic_score": round(sim, 2)
         }
 
         if role_match:
@@ -173,7 +184,7 @@ def process(posts):
             fallback.append(obj)
 
     final = results if results else fallback
-    final.sort(key=lambda x: (x["email"]=="Not found",-x["score"]))
+    final.sort(key=lambda x: (x["email"] == "Not found", -x["score"]))
 
     return final[:RESULT_LIMIT]
 
@@ -184,6 +195,6 @@ if __name__ == "__main__":
     try:
         posts = fetch_posts()
         results = process(posts)
-        print(json.dumps(results))   # ONLY JSON
+        print(json.dumps(results))   # ONLY JSON OUTPUT
     except:
         print(json.dumps([]))
