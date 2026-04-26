@@ -2,6 +2,7 @@ import streamlit as st
 import subprocess
 import os
 import json
+import sys
 
 # 🔐 Load secrets into env
 for key, value in st.secrets.items():
@@ -46,31 +47,10 @@ st.markdown("""
 """)
 
 # ==============================
-# 🎯 PREDEFINED INPUTS
+# 🎯 INPUTS
 # ==============================
-PREDEFINED_SEARCH = {
-    "Business Analyst": "hiring business analyst",
-    "Product Owner": "hiring product owner",
-    "Urgent Hiring": "urgent hiring business analyst",
-    "Custom": ""
-}
-
-PREDEFINED_ROLES = {
-    "Standard": "business analyst, product owner",
-    "Extended": "business analyst, analyst, ba, product owner",
-    "Custom": ""
-}
-
-col1, col2 = st.columns(2)
-
-with col1:
-    search_type = st.selectbox("Search Type", list(PREDEFINED_SEARCH.keys()))
-    search = st.text_input("Search Query", PREDEFINED_SEARCH[search_type])
-
-with col2:
-    role_type = st.selectbox("Role Type", list(PREDEFINED_ROLES.keys()))
-    roles = st.text_input("Role Keywords", PREDEFINED_ROLES[role_type])
-
+search = st.text_input("Search Query", "hiring business analyst")
+roles = st.text_input("Role Keywords", "business analyst, product owner")
 mode = st.selectbox("Email Mode", ["prefer_email", "only_email", "both", "no_email"])
 
 RESULT_LIMIT = 20
@@ -85,4 +65,73 @@ if st.button("🚀 Run Search"):
 
     with st.spinner("Fetching jobs..."):
 
-        os
+        # Set env vars
+        os.environ["SEARCH_QUERY"] = search
+        os.environ["ROLE_KEYWORDS"] = roles
+        os.environ["EMAIL_MODE"] = "both"  # relaxed for testing
+        os.environ["RESULT_LIMIT"] = str(RESULT_LIMIT)
+        os.environ["LOCATION_KEYWORDS"] = "global"
+
+        # 🔥 FIXED EXECUTION
+        result = subprocess.run(
+            [sys.executable, "main.py"],
+            capture_output=True,
+            text=True
+        )
+
+        output = result.stdout + "\n\nERROR:\n" + result.stderr
+
+    st.success("Done!")
+
+    # 🔍 Debug info
+    st.write("Working directory:", os.getcwd())
+    st.text_area("RAW OUTPUT", output, height=300)
+
+    # ==============================
+    # 📊 PARSE OUTPUT
+    # ==============================
+    results = []
+    lines = output.split("\n")
+
+    email = None
+    link = None
+
+    for line in lines:
+        if "📧" in line:
+            email = line.replace("📧", "").strip()
+        if "🔗" in line:
+            link = line.replace("🔗", "").strip()
+            if email and link:
+                results.append((email, link))
+                email, link = None, None
+
+    # ==============================
+    # 📦 DISPLAY
+    # ==============================
+    st.subheader(f"Results ({len(results)})")
+
+    if not results:
+        st.warning("No results found → check RAW OUTPUT above")
+    else:
+        for i, (email, link) in enumerate(results, 1):
+            with st.container():
+                st.markdown(f"### {i}")
+
+                colA, colB = st.columns([2, 5])
+
+                with colA:
+                    if email != "Not found":
+                        st.code(email)
+                    else:
+                        st.caption("No Email")
+
+                with colB:
+                    st.markdown(f"[🔗 Open Post]({link})")
+
+                st.divider()
+
+# ==============================
+# 📊 FOOTER
+# ==============================
+st.markdown("---")
+st.caption(f"👀 Visits: {data['visits']} | 🔍 Searches: {data['searches']}")
