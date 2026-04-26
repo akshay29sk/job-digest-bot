@@ -1,10 +1,10 @@
 # =====================================
 # LinkedIn Hiring Radar
-# Version: v1.0.2-stable-telegram-patch+
-# Status: STABLE + TELEGRAM + NO EMPTY RESULTS
+# Version: v1.0.3-stable-final
+# Status: STABLE + TELEGRAM + CLEAN STDOUT
 # =====================================
 
-import requests, os, re, time, json
+import requests, os, re, time, json, sys
 from functools import lru_cache
 from sentence_transformers import SentenceTransformer, util
 
@@ -31,10 +31,10 @@ def send_telegram(results):
     chat_id = (os.getenv("TELEGRAM_CHAT_ID") or "").strip()
 
     if not token or not chat_id:
-        print("TELEGRAM: Missing token or chat_id")
+        print("TELEGRAM: Missing token or chat_id", file=sys.stderr)
         return
 
-    print(f"TELEGRAM: Sending {min(len(results),5)} messages")
+    print(f"TELEGRAM: Sending {min(len(results),5)} messages", file=sys.stderr)
 
     for r in results[:5]:
         if not r.get("link"):
@@ -55,10 +55,10 @@ def send_telegram(results):
                 data={"chat_id": chat_id, "text": msg},
                 timeout=10
             )
-            print("TELEGRAM STATUS:", res.status_code)
+            print("TELEGRAM STATUS:", res.status_code, file=sys.stderr)
             time.sleep(0.3)
         except Exception as e:
-            print("TELEGRAM ERROR:", str(e))
+            print("TELEGRAM ERROR:", str(e), file=sys.stderr)
 
 # ==============================
 # QUERY
@@ -121,7 +121,7 @@ def fetch_posts():
     return all_posts
 
 # ==============================
-# PROCESS
+# PROCESS (UNCHANGED LOGIC)
 # ==============================
 def process(posts):
     results = []
@@ -183,7 +183,6 @@ def process(posts):
         emb = model.encode(text[:400])
         sim = util.cos_sim(query_emb, emb).item()
 
-        # 🔥 FIX 1: relaxed threshold
         if sim < 0.05:
             continue
 
@@ -207,7 +206,7 @@ def process(posts):
         elif weak_match or has_email:
             fallback.append(obj)
 
-    # 🔥 FIX 2: guaranteed fallback
+    # guaranteed fallback
     if results:
         final = results
     elif fallback:
@@ -234,17 +233,17 @@ def process(posts):
 if __name__ == "__main__":
     try:
         posts = fetch_posts()
-        print("DEBUG posts:", len(posts))
+        print("DEBUG posts:", len(posts), file=sys.stderr)
 
         results = process(posts)
-        print("DEBUG results:", len(results))
+        print("DEBUG results:", len(results), file=sys.stderr)
 
         if results:
             send_telegram(results)
         else:
-            print("TELEGRAM: No results to send")
+            print("TELEGRAM: No results to send", file=sys.stderr)
 
-        print(json.dumps(results))
+        print(json.dumps(results))  # ONLY JSON
     except Exception as e:
-        print("ERROR:", str(e))
+        print("ERROR:", str(e), file=sys.stderr)
         print(json.dumps([]))
