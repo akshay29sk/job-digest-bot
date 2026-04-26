@@ -6,17 +6,22 @@ TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 APIFY_TOKEN = os.getenv("APIFY_TOKEN")
 
+# 🔥 dynamic search query
+SEARCH_QUERY = os.getenv("SEARCH_QUERY", "hiring business analyst OR product owner email")
+
 ACTOR_ID = "harvestapi/linkedin-post-search"
 
 
-# 🚀 Fetch posts (SYNC API - FIXED)
+# 🚀 Fetch posts
 def fetch_posts():
     url = f"https://api.apify.com/v2/acts/{ACTOR_ID}/run-sync-get-dataset-items?token={APIFY_TOKEN}"
 
     payload = {
-        "search": "hiring business analyst OR product owner email OR send resume OR share cv",
+        "search": SEARCH_QUERY,
         "maxItems": 20
     }
+
+    print("Using search:", SEARCH_QUERY)
 
     res = requests.post(url, json=payload)
 
@@ -42,12 +47,15 @@ def filter_posts(posts):
         if not text or not link:
             continue
 
+        # Role filter
         if not any(x in text for x in ["business analyst", "product owner"]):
             continue
 
+        # Hiring intent
         if not any(x in text for x in ["hiring", "looking", "opening"]):
             continue
 
+        # Extract emails
         emails = re.findall(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+", text)
 
         if not emails:
@@ -75,9 +83,9 @@ def send(msg):
 # 🧾 Message
 def build_message(results):
     if not results:
-        return "📭 No high-value hiring posts with emails today."
+        return f"📭 No results today.\n\n🔎 Query: {SEARCH_QUERY}"
 
-    msg = "🔥 LINKEDIN HIRING POSTS (EMAIL FOUND)\n\n"
+    msg = f"🔥 LINKEDIN HIRING POSTS\n🔎 Query: {SEARCH_QUERY}\n\n"
 
     for i, r in enumerate(results, 1):
         msg += f"""{i}.
