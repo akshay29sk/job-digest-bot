@@ -1,6 +1,6 @@
 # =====================================
 # LinkedIn Hiring Radar
-# Version: v0.2.1
+# Version: v0.2.3
 # File: main.py
 # =====================================
 
@@ -21,7 +21,7 @@ if hf_token:
     login(token=hf_token.strip())
 
 # ==============================
-# MODEL CACHE
+# MODEL
 # ==============================
 @lru_cache(maxsize=1)
 def get_model():
@@ -33,10 +33,9 @@ model = get_model()
 # ENV
 # ==============================
 def get_env(name, default=None):
-    val = os.getenv(name)
-    return val if val else default
+    return os.getenv(name) or default
 
-SEARCH_QUERY = get_env("SEARCH_QUERY")  # now only role
+SEARCH_QUERY = get_env("SEARCH_QUERY")
 APIFY_TOKEN = get_env("APIFY_TOKEN")
 
 POSTED_LIMIT = get_env("POSTED_LIMIT", "24h")
@@ -47,11 +46,10 @@ EMAIL_MODE = get_env("EMAIL_MODE", "prefer_email").lower()
 ACTOR_ID = "harvestapi~linkedin-post-search"
 
 # ==============================
-# SMART QUERY GENERATION
+# QUERY GENERATION
 # ==============================
 def generate_queries(role):
     role = role.lower().strip()
-
     return list(set([
         f"hiring {role}",
         f"looking for {role}",
@@ -94,7 +92,6 @@ def fetch_posts():
             if status["data"]["status"] == "SUCCEEDED":
                 dataset_id = status["data"]["defaultDatasetId"]
                 break
-
             time.sleep(3)
 
         posts = requests.get(
@@ -106,10 +103,25 @@ def fetch_posts():
     return all_posts
 
 # ==============================
-# PROCESS (SMART ROLE FILTER)
+# HELPERS
+# ==============================
+def is_english(text):
+    try:
+        text.encode("ascii")
+        return True
+    except:
+        return False
+
+def clean_text(text):
+    text = re.sub(r"#\w+", "", text)  # remove hashtags
+    return text.lower()
+
+# ==============================
+# PROCESS
 # ==============================
 def process_posts(posts):
     results = []
+    fallback = []
     seen = set()
 
     query_embedding = model.encode(SEARCH_QUERY)
@@ -117,33 +129,33 @@ def process_posts(posts):
     clean_query = SEARCH_QUERY.lower().strip()
 
     ROLE_MAP = {
-        "product owner": ["product owner", "product manager", "po"],
-        "business analyst": ["business analyst", "ba", "functional analyst"],
-        "customer success manager": ["customer success manager", "customer success", "csm"],
+        "product owner": ["product owner", "product manager"],
+        "business analyst": ["business analyst"],
+        "customer success manager": ["customer success manager"],
     }
 
     role_variants = ROLE_MAP.get(clean_query, [clean_query])
 
     for post in posts:
-        text = (post.get("content") or "")
-        lower_text = text.lower()
+        raw_text = post.get("content") or ""
         link = post.get("linkedinUrl")
 
-        if not text or not link or link in seen:
+        if not raw_text or not link or link in seen:
             continue
 
         seen.add(link)
 
-        # Intent filter
-        if not any(x in lower_text for x in ["hiring", "job", "role", "opening", "apply"]):
+        if not is_english(raw_text[:300]):
             continue
 
-        # ROLE FILTER (phrase-based)
-        if not any(role in lower_text for role in role_variants):
+        text = clean_text(raw_text)
+
+        if not any(x in text for x in ["hiring", "job", "role", "opening", "apply"]):
             continue
 
-        # Email extraction
-        emails = re.findall(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+", text)
+        role_match = any(role in text for role in role_variants)
+
+        emails = re.findall(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+", raw_text)
         emails = [e.split("hashtag")[0] for e in emails]
 
         has_email = bool(emails)
@@ -154,38 +166,34 @@ def process_posts(posts):
         if EMAIL_MODE == "no_email" and has_email:
             continue
 
-        # Semantic scoring
-        post_embedding = model.encode(text[:500])
+        post_embedding = model.encode(raw_text[:500])
         semantic_score = util.cos_sim(query_embedding, post_embedding).item()
 
         if semantic_score < 0.15:
             continue
 
-        score = semantic_score
-        if has_email:
-            score += 0.3
-        if "urgent" in lower_text:
-            score += 0.2
+        score = semantic_score + (0.3 if has_email else 0)
 
-        results.append({
+        result = {
             "email": email,
             "link": link,
-            "content": text,
+            "content": raw_text,
             "score": round(score, 2),
             "semantic_score": round(semantic_score, 2)
-        })
+        }
 
-    print("RESULT COUNT:", len(results))
+        if role_match:
+            results.append(result)
+        else:
+            fallback.append(result)
 
-    # Email-first sorting
-    results.sort(
-        key=lambda x: (
-            x["email"] == "Not found",
-            -x["score"]
-        )
-    )
+    final = results if results else fallback
 
-    return results[:RESULT_LIMIT]
+    print("RESULT COUNT:", len(final))
+
+    final.sort(key=lambda x: (x["email"] == "Not found", -x["score"]))
+
+    return final[:RESULT_LIMIT]
 
 # ==============================
 # TELEGRAM
@@ -197,12 +205,9 @@ def send(results):
     if not TOKEN or not CHAT_ID:
         return
 
-    if not results:
-        msg = f"📭 No results\n\n🔎 {SEARCH_QUERY}"
-    else:
-        msg = f"🔥 {SEARCH_QUERY}\n\n"
-        for r in results[:5]:
-            msg += f"📧 {r['email']}\n🔗 {r['link']}\n\n"
+    msg = f"🔥 {SEARCH_QUERY}\n\n"
+    for r in results[:5]:
+        msg += f"📧 {r['email']}\n🔗 {r['link']}\n\n"
 
     requests.post(
         f"https://api.telegram.org/bot{TOKEN}/sendMessage",
