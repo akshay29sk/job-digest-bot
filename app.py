@@ -149,7 +149,8 @@ if trigger:
             st.error("❌ Parsing failed")
             results = []
 
-        json.dump(results, open(CACHE_FILE, "w"))
+        if results:
+    json.dump(results, open(CACHE_FILE, "w"))
         st.success("✅ Fresh data fetched")
 
     # ==============================
