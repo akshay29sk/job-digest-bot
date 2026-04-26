@@ -1,6 +1,6 @@
 # =====================================
 # LinkedIn Hiring Radar
-# Version: v0.2.9.1
+# Version: v0.2.9.2
 # File: main.py
 # =====================================
 
@@ -8,18 +8,12 @@ import requests, os, re, time, json
 from functools import lru_cache
 from sentence_transformers import SentenceTransformer, util
 
-# ==============================
-# MODEL
-# ==============================
 @lru_cache(maxsize=1)
 def get_model():
     return SentenceTransformer("all-MiniLM-L6-v2")
 
 model = get_model()
 
-# ==============================
-# ENV
-# ==============================
 SEARCH_QUERY = os.getenv("SEARCH_QUERY", "").strip()
 APIFY_TOKEN = os.getenv("APIFY_TOKEN")
 
@@ -29,9 +23,6 @@ EMAIL_MODE = os.getenv("EMAIL_MODE", "prefer_email").lower()
 
 ACTOR_ID = "harvestapi~linkedin-post-search"
 
-# ==============================
-# QUERY
-# ==============================
 def generate_queries(role):
     role = role.lower().strip()
     return list(set([
@@ -41,9 +32,6 @@ def generate_queries(role):
         f"looking for {role}"
     ]))
 
-# ==============================
-# FETCH
-# ==============================
 def fetch_posts():
     if not SEARCH_QUERY or not APIFY_TOKEN:
         return []
@@ -89,9 +77,6 @@ def fetch_posts():
 
     return all_posts
 
-# ==============================
-# PROCESS
-# ==============================
 def process(posts):
     results = []
     fallback = []
@@ -116,11 +101,12 @@ def process(posts):
         "email your resume", "position", "vacancy"
     ]
 
-    # 🔥 NEW: noise filter (SAFE ADDITION)
+    # SAFE noise filter
     bad_patterns = [
         "hot take",
         "lessons",
         "most people think",
+        "discussion",
         "my thoughts",
         "opinion",
         "insight",
@@ -137,30 +123,18 @@ def process(posts):
 
         clean = re.sub(r"#\w+", "", text.lower())
 
-        # 🔥 NEW: remove non-job content
+        # Remove obvious non-job content
         if any(bp in clean for bp in bad_patterns):
             continue
 
-        # ==============================
-        # INTENT
-        # ==============================
+        # Intent
         intent_match = any(k in clean for k in intent_keywords)
-        fallback_intent = any(x in clean for x in ["hiring", "job", "opening"])
-
         allow_fallback = not intent_match
 
-        # ==============================
-        # ROLE MATCH
-        # ==============================
-        role_match = any(f" {r} " in f" {clean} " for r in roles)
+        # Role match (soft)
+        role_match = any(r in clean for r in roles)
 
-        # 🔥 NEW: ensure relevance
-        if not role_match and not intent_match:
-            continue
-
-        # ==============================
-        # EMAIL
-        # ==============================
+        # Email
         emails = re.findall(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+", text)
         has_email = bool(emails)
         email = emails[0] if has_email else "Not found"
@@ -168,12 +142,11 @@ def process(posts):
         if EMAIL_MODE == "only_email" and not has_email:
             continue
 
-        # ==============================
-        # SEMANTIC
-        # ==============================
+        # Semantic
         emb = model.encode(text[:400])
         sim = util.cos_sim(query_emb, emb).item()
 
+        # Relaxed threshold
         if sim < 0.08 and not allow_fallback:
             continue
 
@@ -182,6 +155,7 @@ def process(posts):
         if "apply" in clean or "send your resume" in clean:
             score += 0.2
 
+        # Final safety
         if not intent_match and sim < 0.15:
             continue
 
@@ -203,9 +177,6 @@ def process(posts):
 
     return final[:RESULT_LIMIT]
 
-# ==============================
-# RUN
-# ==============================
 if __name__ == "__main__":
     try:
         posts = fetch_posts()
