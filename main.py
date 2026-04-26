@@ -5,39 +5,54 @@ import re
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 APIFY_TOKEN = os.getenv("APIFY_TOKEN")
-print("APIFY TOKEN:", APIFY_TOKEN)
 
-SEARCH_QUERY = os.getenv("SEARCH_QUERY", "hiring business analyst OR product owner email")
-
-# ✅ FIXED ACTOR ID
+# ✅ Use Apify Actor
 ACTOR_ID = "harvestapi~linkedin-post-search"
 
 
+# 🔥 Multiple simple queries (works MUCH better than complex query)
+QUERIES = [
+    "hiring business analyst",
+    "business analyst immediate joiner",
+    "hiring product owner",
+    "product owner agile hiring",
+    "business analyst jobs india"
+]
+
+
+# 🚀 Fetch posts from Apify
 def fetch_posts():
-    url = f"https://api.apify.com/v2/acts/{ACTOR_ID}/run-sync-get-dataset-items?token={APIFY_TOKEN}"
+    all_posts = []
 
-    payload = {
-        "search": SEARCH_QUERY,
-        "maxItems": 20
-    }
+    for q in QUERIES:
+        print("Running query:", q)
 
-    print("Using search:", SEARCH_QUERY)
+        url = f"https://api.apify.com/v2/acts/{ACTOR_ID}/run-sync-get-dataset-items?token={APIFY_TOKEN}"
 
-    res = requests.post(url, json=payload)
+        payload = {
+            "search": q,
+            "maxItems": 10
+        }
 
-    if res.status_code != 200:
-        print("Apify Error:", res.text)
-        return []
+        res = requests.post(url, json=payload)
 
-    posts = res.json()
+        if res.status_code != 200:
+            print("Apify Error:", res.text)
+            continue
 
-    print("Posts fetched:", len(posts))
-    return posts
+        posts = res.json()
+        print(f"Fetched {len(posts)} posts for query: {q}")
+
+        all_posts.extend(posts)
+
+    print("Total posts fetched:", len(all_posts))
+    return all_posts
 
 
+# 🎯 Filter high-value posts
 def filter_posts(posts):
     results = []
-    seen = set()
+    seen_links = set()
 
     for post in posts:
         text = (post.get("text") or "").lower()
@@ -46,21 +61,25 @@ def filter_posts(posts):
         if not text or not link:
             continue
 
+        # Role filter
         if not any(x in text for x in ["business analyst", "product owner"]):
             continue
 
+        # Hiring intent
         if not any(x in text for x in ["hiring", "looking", "opening"]):
             continue
 
+        # Extract emails
         emails = re.findall(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+", text)
 
         if not emails:
             continue
 
-        if link in seen:
+        # Remove duplicates
+        if link in seen_links:
             continue
 
-        seen.add(link)
+        seen_links.add(link)
 
         results.append({
             "email": emails[0],
@@ -70,16 +89,18 @@ def filter_posts(posts):
     return results[:5]
 
 
+# 📩 Send message to Telegram
 def send(msg):
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
     requests.post(url, data={"chat_id": CHAT_ID, "text": msg})
 
 
+# 🧾 Build Telegram message
 def build_message(results):
     if not results:
-        return f"📭 No results today.\n\n🔎 Query: {SEARCH_QUERY}"
+        return "📭 No high-value hiring posts with emails found today."
 
-    msg = f"🔥 LINKEDIN HIRING POSTS\n🔎 Query: {SEARCH_QUERY}\n\n"
+    msg = "🔥 LINKEDIN HIRING POSTS (EMAIL FOUND)\n\n"
 
     for i, r in enumerate(results, 1):
         msg += f"""{i}.
@@ -91,8 +112,11 @@ def build_message(results):
     return msg
 
 
+# ▶️ Main runner
 if __name__ == "__main__":
     try:
+        print("APIFY TOKEN:", APIFY_TOKEN)
+
         posts = fetch_posts()
         filtered = filter_posts(posts)
         msg = build_message(filtered)
