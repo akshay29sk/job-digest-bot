@@ -44,7 +44,11 @@ st.title("🔥 LinkedIn Hiring Radar")
 # ==============================
 # 🎯 INPUTS
 # ==============================
-search = st.text_input("🔎 Search Query", "hiring customer success manager")
+search = st.text_input(
+    "🔎 Search Query",
+    value="hiring product owner",
+    placeholder="e.g. hiring product owner, business analyst, product manager"
+)
 
 roles = st.text_input("🎯 Role Keywords (Optional)", "")
 
