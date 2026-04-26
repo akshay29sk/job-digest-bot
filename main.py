@@ -1,7 +1,7 @@
 # =====================================
 # LinkedIn Hiring Radar
-# Version: v1.0.2-stable-telegram
-# Status: STABLE + SMART FILTER + TELEGRAM
+# Version: v1.0.3-stable-fix
+# Status: STABLE + HIRING FOCUS + NO EMPTY RESULTS + TELEGRAM
 # =====================================
 
 import requests, os, re, time, json
@@ -29,11 +29,10 @@ ACTOR_ID = "harvestapi~linkedin-post-search"
 def send_telegram(results):
     token = os.getenv("TELEGRAM_BOT_TOKEN")
     chat_id = os.getenv("TELEGRAM_CHAT_ID")
-
     if not token or not chat_id:
         return
 
-    for r in results[:5]:  # limit messages
+    for r in results[:5]:
         msg = f"""🔥 New Job Lead
 
 📧 {r['email']}
@@ -41,9 +40,7 @@ def send_telegram(results):
 
 {r['content'][:200]}
 
-🔗 {r['link']}
-"""
-
+🔗 {r['link']}"""
         try:
             requests.post(
                 f"https://api.telegram.org/bot{token}/sendMessage",
@@ -125,23 +122,13 @@ def process(posts):
 
     query_emb = model.encode(SEARCH_QUERY)
 
-    ROLE_MAP = {
-        "product owner": ["product owner", "product manager"],
-        "business analyst": ["business analyst"],
-        "customer success manager": ["customer success manager"]
-    }
+    roles = [SEARCH_QUERY.lower()]
 
-    roles = ROLE_MAP.get(SEARCH_QUERY.lower(), [SEARCH_QUERY.lower()])
-
-    strict_intent = [
-        "we are hiring", "we're hiring", "hiring",
-        "looking for", "job opening", "opening for",
-        "apply", "apply now",
-        "send your resume", "share your resume",
-        "email your resume"
+    intent_keywords = [
+        "hiring", "we are hiring", "we're hiring", "looking for",
+        "job opening", "opening for", "apply", "apply now",
+        "send your resume", "share your resume", "email your resume"
     ]
-
-    weak_intent = ["position", "vacancy", "dm me", "reach out"]
 
     bad_patterns = [
         "hot take", "lessons", "most people think",
@@ -159,14 +146,14 @@ def process(posts):
 
         clean = re.sub(r"#\w+", "", text.lower())
 
-        # ❌ Remove noise
+        # ❌ remove noise
         if any(bp in clean for bp in bad_patterns):
             continue
 
-        strict_match = any(k in clean for k in strict_intent)
-        weak_match = any(k in clean for k in weak_intent)
+        # intent
+        intent_match = any(k in clean for k in intent_keywords)
 
-        # Email
+        # email
         emails = re.findall(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+", text)
         has_email = bool(emails)
         email = emails[0] if has_email else "Not found"
@@ -174,11 +161,11 @@ def process(posts):
         if EMAIL_MODE == "only_email" and not has_email:
             continue
 
-        # Semantic
+        # semantic
         emb = model.encode(text[:400])
         sim = util.cos_sim(query_emb, emb).item()
 
-        if sim < 0.08:
+        if sim < 0.05:   # 🔥 relaxed threshold
             continue
 
         score = sim + (0.3 if has_email else 0)
@@ -196,15 +183,16 @@ def process(posts):
             "semantic_score": round(sim, 2)
         }
 
-        # PRIMARY
-        if strict_match:
+        # PRIMARY: strict hiring
+        if intent_match:
             results.append(obj)
 
-        # FALLBACK
-        elif weak_match or has_email:
+        # FALLBACK: email-based or strong semantic
+        elif has_email or sim > 0.3:
             fallback.append(obj)
 
     final = results if results else fallback
+
     final.sort(key=lambda x: (x["email"] == "Not found", -x["score"]))
 
     return final[:RESULT_LIMIT]
@@ -217,7 +205,6 @@ if __name__ == "__main__":
         posts = fetch_posts()
         results = process(posts)
 
-        # 🔥 TELEGRAM TRIGGER
         if results:
             send_telegram(results)
 
