@@ -7,12 +7,10 @@ def get_env(name, default=None):
     val = os.getenv(name)
     return val if val else default
 
-# 🔐 REQUIRED
 SEARCH_QUERY = get_env("SEARCH_QUERY")
 if not SEARCH_QUERY:
     raise Exception("SEARCH_QUERY is required")
 
-# 🔐 OPTIONAL
 TOKEN = get_env("TELEGRAM_TOKEN")
 CHAT_ID = get_env("CHAT_ID")
 APIFY_TOKEN = get_env("APIFY_TOKEN")
@@ -29,7 +27,7 @@ EMAIL_MODE = get_env("EMAIL_MODE", "prefer_email").lower()
 ACTOR_ID = "harvestapi~linkedin-post-search"
 
 # ==============================
-# 🚀 FETCH
+# FETCH
 # ==============================
 def fetch_posts():
     payload = {
@@ -56,7 +54,6 @@ def fetch_posts():
         ).json()
 
         state = status["data"]["status"]
-        print("⏳ Status:", state)
 
         if state == "SUCCEEDED":
             dataset_id = status["data"]["defaultDatasetId"]
@@ -71,11 +68,10 @@ def fetch_posts():
         f"https://api.apify.com/v2/datasets/{dataset_id}/items?clean=true&token={APIFY_TOKEN}"
     ).json()
 
-    print("📦 Fetched:", len(posts))
     return posts
 
 # ==============================
-# 🎯 FILTER (SAFE + OPTIONAL)
+# FILTER
 # ==============================
 def filter_posts(posts):
     results = []
@@ -87,25 +83,22 @@ def filter_posts(posts):
 
     for post in posts:
         text = (post.get("content") or "").lower()
+        raw_content = (post.get("content") or "").strip()
         link = post.get("linkedinUrl")
 
         if not text or not link:
             continue
 
-        # ✅ Role (optional)
         if role_words and not any(x in text for x in role_words):
             continue
 
-        # ✅ Hiring (optional)
         if hiring_words and not any(x in text for x in hiring_words):
             continue
 
-        # ✅ Location (optional)
         if LOCATION_KEYWORDS.lower() != "global" and location_words:
             if not any(x in text for x in location_words):
                 continue
 
-        # 📧 Email
         emails = re.findall(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+", text)
         has_email = len(emails) > 0
         email = emails[0] if has_email else "Not found"
@@ -123,10 +116,9 @@ def filter_posts(posts):
         results.append({
             "email": email,
             "link": link,
+            "content": raw_content,
             "has_email": has_email
         })
-
-    print(f"✅ After filtering: {len(results)}")
 
     if EMAIL_MODE == "prefer_email":
         results.sort(key=lambda x: not x["has_email"])
@@ -134,16 +126,7 @@ def filter_posts(posts):
     return results[:RESULT_LIMIT]
 
 # ==============================
-# 📩 TELEGRAM (OPTIONAL)
-# ==============================
-def send(msg):
-    if not TOKEN or not CHAT_ID:
-        return
-    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-    requests.post(url, data={"chat_id": CHAT_ID, "text": msg})
-
-# ==============================
-# 🧾 MESSAGE
+# MESSAGE
 # ==============================
 def build_message(results):
     if not results:
@@ -152,12 +135,22 @@ def build_message(results):
     msg = f"🔥 LINKEDIN POSTS\n🔎 Query: {SEARCH_QUERY}\n\n"
 
     for i, r in enumerate(results, 1):
-        msg += f"{i}\n📧 {r['email']}\n🔗 {r['link']}\n\n"
+        preview = r["content"][:200].replace("\n", " ")
+        msg += f"{i}\n📧 {r['email']}\n📝 {preview}\n🔗 {r['link']}\n\n"
 
     return msg
 
 # ==============================
-# ▶️ RUN
+# TELEGRAM
+# ==============================
+def send(msg):
+    if not TOKEN or not CHAT_ID:
+        return
+    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+    requests.post(url, data={"chat_id": CHAT_ID, "text": msg})
+
+# ==============================
+# RUN
 # ==============================
 if __name__ == "__main__":
     posts = fetch_posts()
