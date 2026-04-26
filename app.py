@@ -1,7 +1,6 @@
 import streamlit as st
 import subprocess
 import os
-import json
 import sys
 
 # Load secrets
@@ -36,15 +35,11 @@ posted_limit = st.selectbox(
 # 📍 Location
 location_options = ["india", "pune", "mumbai", "bangalore", "hyderabad", "remote"]
 
-selected_locations = st.multiselect(
-    "📍 Location",
-    location_options
-)
-
+selected_locations = st.multiselect("📍 Location", location_options)
 location_str = ", ".join(selected_locations) if selected_locations else "global"
 
 # ==============================
-# ⚙️ ADVANCED FILTERS
+# ADVANCED FILTERS
 # ==============================
 use_filters = st.toggle("⚙️ Enable Advanced Filters")
 
@@ -56,33 +51,20 @@ if use_filters:
     col1, col2, col3 = st.columns(3)
 
     with col1:
-        experience = st.multiselect(
-            "Experience",
-            ["entry", "fresher", "junior", "mid", "senior", "lead"]
-        )
+        st.multiselect("Experience", ["entry", "fresher", "junior", "mid", "senior", "lead"])
 
     with col2:
-        job_type = st.multiselect(
-            "Job Type",
-            ["full-time", "contract", "internship", "freelance"]
-        )
+        st.multiselect("Job Type", ["full-time", "contract", "internship", "freelance"])
 
     with col3:
-        work_mode = st.multiselect(
-            "Work Mode",
-            ["remote", "hybrid", "onsite"]
-        )
+        st.multiselect("Work Mode", ["remote", "hybrid", "onsite"])
 
-    urgency = st.checkbox("⚡ Urgent Hiring Only")
+    st.checkbox("⚡ Urgent Hiring Only")
 
-    result_limit = st.selectbox(
-        "📊 Number of Results",
-        [10, 20, 50],
-        index=1
-    )
+    result_limit = st.selectbox("📊 Number of Results", [10, 20, 50], index=1)
 
 # ==============================
-# OTHER SETTINGS
+# SETTINGS
 # ==============================
 mode = st.selectbox(
     "📧 Email Mode",
@@ -90,7 +72,21 @@ mode = st.selectbox(
 )
 
 # ==============================
-# RUN BACKEND
+# CACHE
+# ==============================
+cache_key = f"{search}_{roles}_{location_str}_{posted_limit}_{mode}".replace(" ", "_").replace(",", "_")
+CACHE_FILE = f"cache_{cache_key}.txt"
+
+# ==============================
+# BUTTONS
+# ==============================
+col1, col2 = st.columns(2)
+
+run_btn = col1.button("🚀 Run Search (Cached)")
+refresh_btn = col2.button("🔄 Refresh (Costs API)")
+
+# ==============================
+# BACKEND RUNNER
 # ==============================
 def run_backend():
     os.environ["SEARCH_QUERY"] = search
@@ -111,14 +107,30 @@ def run_backend():
 # ==============================
 # EXECUTION
 # ==============================
-if st.button("🚀 Run Search"):
+if run_btn or refresh_btn:
 
     if not search.strip():
         st.error("Search Query is required")
         st.stop()
 
-    output = run_backend()
+    # USE CACHE
+    if run_btn and os.path.exists(CACHE_FILE):
+        with open(CACHE_FILE, "r") as f:
+            output = f.read()
+        st.success("⚡ Loaded from cache")
 
+    else:
+        output = run_backend()
+
+        # Save cache
+        with open(CACHE_FILE, "w") as f:
+            f.write(output)
+
+        st.success("✅ Fresh data fetched")
+
+    # ==============================
+    # PARSE OUTPUT
+    # ==============================
     results = []
     lines = output.split("\n")
 
@@ -168,7 +180,7 @@ if st.button("🚀 Run Search"):
         if r["has_email"]:
             st.success(r["email"])
         else:
-            st.caption("No Email")
+            st.caption("❌ No Email")
 
         if r["content"]:
             st.write(r["content"])
