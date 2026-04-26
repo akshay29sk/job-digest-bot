@@ -48,12 +48,27 @@ with col1:
 with col2:
     roles = st.text_input("Role Keywords", "business analyst, product owner")
 
+# 📍 LOCATION FILTER (NEW)
+location = st.selectbox(
+    "📍 Location",
+    [
+        "global",
+        "india",
+        "pune",
+        "mumbai",
+        "bangalore",
+        "hyderabad",
+        "remote",
+        "india, remote"
+    ]
+)
+
 mode = st.selectbox("Email Mode", ["prefer_email", "only_email", "both", "no_email"])
 
 RESULT_LIMIT = 20
 
-# Cache file per query
-CACHE_FILE = f"cache_{search.replace(' ', '_')}.txt"
+# Cache file
+CACHE_FILE = f"cache_{search.replace(' ', '_')}_{location.replace(',', '_')}.txt"
 
 # ==============================
 # 🚀 BUTTONS
@@ -85,8 +100,8 @@ if run_search or refresh:
             os.environ["HIRING_KEYWORDS"] = "hiring, looking, urgent, immediate joiner, send resume, share cv"
             os.environ["EMAIL_MODE"] = mode
             os.environ["RESULT_LIMIT"] = str(RESULT_LIMIT)
-            os.environ["LOCATION_KEYWORDS"] = "global"
-            os.environ["MAX_POSTS"] = "30"  # 🔥 cost reduced
+            os.environ["LOCATION_KEYWORDS"] = location   # ✅ DYNAMIC
+            os.environ["MAX_POSTS"] = "30"
             os.environ["POSTED_LIMIT"] = "24h"
 
             result = subprocess.run(
@@ -97,11 +112,10 @@ if run_search or refresh:
 
             output = result.stdout + "\n\nERROR:\n" + result.stderr
 
-            # Save to cache
             with open(CACHE_FILE, "w") as f:
                 f.write(output)
 
-            st.success("✅ Fresh data fetched (API used)")
+            st.success("✅ Fresh data fetched")
 
     # ==============================
     # 📊 PARSE OUTPUT
@@ -122,7 +136,7 @@ if run_search or refresh:
                 email, link = None, None
 
     # ==============================
-    # 📦 PREMIUM DISPLAY
+    # 📦 DISPLAY
     # ==============================
     st.markdown("---")
     st.subheader(f"🎯 Results ({len(results)})")
@@ -131,7 +145,7 @@ if run_search or refresh:
     st.info(f"📧 {emails_count} posts with emails out of {len(results)}")
 
     if not results:
-        st.warning("No results found → try different query")
+        st.warning("No results found → try different location/query")
     else:
         for i, (email, link) in enumerate(results, 1):
 
