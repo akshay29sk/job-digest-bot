@@ -23,7 +23,6 @@ def fetch_posts():
 
     run_url = f"https://api.apify.com/v2/acts/{ACTOR_ID}/runs?token={APIFY_TOKEN}"
 
-    # ✅ MATCHES YOUR APIFY JSON
     payload = {
         "searchQueries": queries,
         "maxPosts": 100,
@@ -63,10 +62,8 @@ def fetch_posts():
 
         time.sleep(5)
 
-    # small buffer
     time.sleep(3)
 
-    # ✅ CORRECT DATASET FETCH
     dataset_url = f"https://api.apify.com/v2/datasets/{dataset_id}/items?clean=true&token={APIFY_TOKEN}"
     posts = requests.get(dataset_url).json()
 
@@ -82,17 +79,24 @@ def filter_posts(posts):
     seen = set()
 
     for post in posts:
-        text = (post.get("text") or post.get("content") or "").lower()
-        link = post.get("url") or post.get("postUrl")
+        # ✅ FIXED FIELD MAPPING
+        text = (post.get("content") or "").lower()
+        link = post.get("linkedinUrl")
 
         if not text or not link:
             continue
 
-        # Role filter
-        if not any(x in text for x in ["business analyst", "product owner"]):
+        # ✅ SMART ROLE FILTER (FIXED)
+        if not any(x in text for x in [
+            "analyst",
+            "business analyst",
+            "product owner",
+            "system analyst",
+            "functional analyst"
+        ]):
             continue
 
-        # Hiring intent filter
+        # ✅ HIRING SIGNAL
         if not any(x in text for x in [
             "hiring", "looking", "opening",
             "immediate joiner", "urgent",
@@ -100,6 +104,7 @@ def filter_posts(posts):
         ]):
             continue
 
+        # ✅ EMAIL EXTRACTION (WORKING NOW)
         emails = re.findall(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+", text)
         email = emails[0] if emails else "Not found"
 
@@ -142,7 +147,7 @@ if __name__ == "__main__":
         print("🔐 APIFY TOKEN:", APIFY_TOKEN)
 
         posts = fetch_posts()
-        posts = posts[:50]  # performance limit
+        posts = posts[:50]  # performance
 
         filtered = filter_posts(posts)
         msg = build_message(filtered)
