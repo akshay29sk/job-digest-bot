@@ -102,16 +102,23 @@ refresh_btn = col2.button("🔄 Refresh (API Call)")
 # BACKEND
 # ==============================
 def run_backend():
-    os.environ["SEARCH_QUERY"] = search
-    os.environ["POSTED_LIMIT"] = posted
-    os.environ["EMAIL_MODE"] = mode
-    os.environ["RESULT_LIMIT"] = str(limit)
-    os.environ["LOCATION_KEYWORDS"] = location_str
+    env = os.environ.copy()
+
+    env["SEARCH_QUERY"] = search
+    env["POSTED_LIMIT"] = posted
+    env["EMAIL_MODE"] = mode
+    env["RESULT_LIMIT"] = str(limit)
+    env["LOCATION_KEYWORDS"] = location_str
+
+    # 🔥 PASS TELEGRAM SECRETS
+    env["TELEGRAM_BOT_TOKEN"] = st.secrets.get("TELEGRAM_BOT_TOKEN", "")
+    env["TELEGRAM_CHAT_ID"] = st.secrets.get("TELEGRAM_CHAT_ID", "")
 
     return subprocess.run(
         [sys.executable, "main.py"],
         capture_output=True,
-        text=True
+        text=True,
+        env=env  # 👈 CRITICAL LINE
     )
 
 # ==============================
