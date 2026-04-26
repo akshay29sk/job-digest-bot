@@ -49,7 +49,16 @@ roles = st.text_input(
 )
 
 # ==============================
-# 📍 LOCATION (MULTI SELECT)
+# 🕒 POSTED TIME FILTER (NEW)
+# ==============================
+posted_limit = st.selectbox(
+    "🕒 Posted Within",
+    ["any", "1h", "24h", "week", "month", "3months", "6months", "year"],
+    index=2
+)
+
+# ==============================
+# 📍 LOCATION
 # ==============================
 location_options = ["india", "pune", "mumbai", "bangalore", "hyderabad", "remote"]
 
@@ -112,9 +121,9 @@ mode = st.selectbox(
 )
 
 # ==============================
-# 🧠 CACHE (FIXED)
+# 🧠 CACHE
 # ==============================
-cache_key = f"{search}_{location_str}".replace(" ", "_").replace(",", "_")
+cache_key = f"{search}_{location_str}_{posted_limit}".replace(" ", "_").replace(",", "_")
 CACHE_FILE = f"cache_{cache_key}.txt"
 
 # ==============================
@@ -151,8 +160,8 @@ if run_search or refresh:
             os.environ["EMAIL_MODE"] = mode
             os.environ["RESULT_LIMIT"] = str(result_limit_ui)
             os.environ["LOCATION_KEYWORDS"] = location_str
+            os.environ["POSTED_LIMIT"] = posted_limit
             os.environ["MAX_POSTS"] = "50"
-            os.environ["POSTED_LIMIT"] = "24h"
 
             result = subprocess.run(
                 [sys.executable, "main.py"],
@@ -168,7 +177,7 @@ if run_search or refresh:
             st.success("✅ Fresh data fetched")
 
     # ==============================
-    # 📊 PARSE OUTPUT
+    # 📊 PARSE
     # ==============================
     results = []
     lines = output.split("\n")
@@ -199,7 +208,7 @@ if run_search or refresh:
     st.info(f"📧 {email_count} posts with emails")
 
     if not results:
-        st.warning("No results found → try broader search")
+        st.warning("No results found → try broader filters")
     else:
         for i, r in enumerate(results, 1):
 
