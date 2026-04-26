@@ -1,7 +1,7 @@
 # =====================================
 # LinkedIn Hiring Radar
-# Version: v1.0.0-stable-radar-core
-# Status: STABLE BASELINE UI
+# Version: v1.0.1-ui-patch
+# Status: STABLE UI (Indent Fix + Metric Fix)
 # =====================================
 
 import streamlit as st
@@ -115,7 +115,7 @@ def run_backend():
     )
 
 # ==============================
-# EXECUTION (FIXED)
+# EXECUTION
 # ==============================
 trigger = run_btn or refresh_btn
 
@@ -149,8 +149,10 @@ if trigger:
             st.error("❌ Parsing failed")
             results = []
 
+        # ✅ FIXED INDENTATION HERE
         if results:
-    json.dump(results, open(CACHE_FILE, "w"))
+            json.dump(results, open(CACHE_FILE, "w"))
+
         st.success("✅ Fresh data fetched")
 
     # ==============================
@@ -169,7 +171,7 @@ if trigger:
             with col1:
                 st.metric("⭐ Score", r.get("score"))
 
-            with col1:
+            with col2:  # ✅ FIXED (was col1 earlier)
                 st.metric("🧠 Semantic", r.get("semantic_score"))
 
             if r.get("score", 0) > 0.7:
