@@ -1,6 +1,6 @@
-# # =====================================
+# =====================================
 # LinkedIn Hiring Radar
-# Version: v0.1.5.2
+# Version: v0.1.5.3
 # File: app.py
 # =====================================
 
@@ -9,6 +9,7 @@ import subprocess
 import os
 import sys
 import json
+import re
 
 # ==============================
 # 🔐 Load secrets
@@ -168,12 +169,17 @@ if run_btn or refresh_btn:
                 st.warning("No output received")
 
         # ==============================
-        # PARSE
+        # 🔥 FIXED PARSING
         # ==============================
         try:
-            results = json.loads(result.stdout) if result.stdout else []
-        except:
+            match = re.search(r"\[.*\]", result.stdout, re.DOTALL)
+            if match:
+                results = json.loads(match.group(0))
+            else:
+                results = []
+        except Exception as e:
             st.error("❌ Parsing failed")
+            st.text(result.stdout[:1000])
             st.stop()
 
         json.dump(results, open(CACHE_FILE, "w"))
