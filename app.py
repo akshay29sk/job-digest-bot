@@ -46,8 +46,8 @@ st.title("🔥 LinkedIn Hiring Radar")
 # ==============================
 search = st.text_input(
     "🔎 Search Query",
-    value="hiring product owner",
-    placeholder="e.g. hiring product owner, business analyst, product manager"
+    value="product owner",
+    placeholder="e.g. product owner, business analyst, product manager"
 )
 
 roles = st.text_input("🎯 Role Keywords (Optional)", "")
