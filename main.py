@@ -43,7 +43,7 @@ def fetch_posts():
         run_id = run_data["id"]
         dataset_id = run_data["defaultDatasetId"]
 
-        # ⏳ wait for completion
+        # ⏳ Wait for completion
         status_url = f"https://api.apify.com/v2/actor-runs/{run_id}?token={APIFY_TOKEN}"
 
         for _ in range(24):  # ~2 mins max
@@ -59,14 +59,18 @@ def fetch_posts():
 
             time.sleep(5)
 
-        # ⏳ small buffer to ensure dataset is ready
-        time.sleep(5)
+        # ⏳ Ensure dataset ready
+        time.sleep(3)
 
-        # ✅ CORRECT dataset fetch
-        dataset_url = f"https://api.apify.com/v2/datasets/{dataset_id}/items?token={APIFY_TOKEN}"
+        dataset_url = f"https://api.apify.com/v2/datasets/{dataset_id}/items?clean=true&token={APIFY_TOKEN}"
         posts = requests.get(dataset_url).json()
 
         print(f"📦 Fetched {len(posts)} posts for query: {q}")
+
+        # 👇 Debug sample (first run visibility)
+        if posts:
+            print("🧪 Sample post:", posts[0])
+
         all_posts.extend(posts)
 
     print("\n📊 Total posts fetched:", len(all_posts))
@@ -78,18 +82,25 @@ def filter_posts(posts):
     seen = set()
 
     for post in posts:
-        text = (post.get("text") or "").lower()
-        link = post.get("url")
+        text = (post.get("text") or post.get("content") or "").lower()
+        link = post.get("url") or post.get("postUrl")
 
         if not text or not link:
             continue
 
+        # Role filter
         if not any(x in text for x in ["business analyst", "product owner"]):
             continue
 
-        if not any(x in text for x in ["hiring", "looking", "opening"]):
+        # Hiring intent filter (improved)
+        if not any(x in text for x in [
+            "hiring", "looking", "opening",
+            "immediate joiner", "urgent",
+            "send resume", "share cv"
+        ]):
             continue
 
+        # Email extraction (not strict)
         emails = re.findall(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+", text)
         email = emails[0] if emails else "Not found"
 
@@ -121,7 +132,7 @@ def build_message(results):
         msg += f"""{i}.
 📧 {r['email']}
 🔗 {r['link']}
-
+--------------------
 """
 
     return msg
@@ -132,6 +143,10 @@ if __name__ == "__main__":
         print("🔐 APIFY TOKEN:", APIFY_TOKEN)
 
         posts = fetch_posts()
+
+        # Limit dataset for performance
+        posts = posts[:50]
+
         filtered = filter_posts(posts)
         msg = build_message(filtered)
 
