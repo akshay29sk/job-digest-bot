@@ -8,7 +8,7 @@ import sys
 for key, value in st.secrets.items():
     os.environ[key] = value
 
-st.set_page_config(page_title="LinkedIn Hiring Finder", layout="wide")
+st.set_page_config(page_title="LinkedIn Hiring Radar", layout="wide")
 
 # ==============================
 # 📊 ANALYTICS
@@ -32,25 +32,22 @@ save_data(data)
 # ==============================
 # 🎯 HEADER
 # ==============================
-st.title("🔥 LinkedIn Hiring Finder")
-
 st.markdown("""
-### 🚀 What this app does
-- Finds latest LinkedIn hiring posts
-- Extracts recruiter emails
-- Helps you apply faster
-
-### 💡 Tips
-- Prefer email posts
-- Apply within 1–2 hours
-- Try multiple queries
+# 🔥 LinkedIn Hiring Radar  
+### Find recruiter emails faster than others 🚀
 """)
 
 # ==============================
 # 🎯 INPUTS
 # ==============================
-search = st.text_input("Search Query", "hiring business analyst")
-roles = st.text_input("Role Keywords", "business analyst, product owner")
+col1, col2 = st.columns(2)
+
+with col1:
+    search = st.text_input("Search Query", "hiring business analyst")
+
+with col2:
+    roles = st.text_input("Role Keywords", "business analyst, product owner")
+
 mode = st.selectbox("Email Mode", ["prefer_email", "only_email", "both", "no_email"])
 
 RESULT_LIMIT = 20
@@ -65,17 +62,15 @@ if st.button("🚀 Run Search"):
 
     with st.spinner("Fetching jobs..."):
 
-        # ✅ ENV VARIABLES (ALL REQUIRED)
         os.environ["SEARCH_QUERY"] = search
         os.environ["ROLE_KEYWORDS"] = roles
         os.environ["HIRING_KEYWORDS"] = "hiring, looking, urgent, immediate joiner, send resume, share cv"
-        os.environ["EMAIL_MODE"] = "both"  # relaxed for testing
+        os.environ["EMAIL_MODE"] = mode
         os.environ["RESULT_LIMIT"] = str(RESULT_LIMIT)
         os.environ["LOCATION_KEYWORDS"] = "global"
         os.environ["MAX_POSTS"] = "100"
         os.environ["POSTED_LIMIT"] = "24h"
 
-        # 🔥 CORRECT EXECUTION
         result = subprocess.run(
             [sys.executable, "main.py"],
             capture_output=True,
@@ -83,12 +78,6 @@ if st.button("🚀 Run Search"):
         )
 
         output = result.stdout + "\n\nERROR:\n" + result.stderr
-
-    st.success("Done!")
-
-    # 🔍 DEBUG INFO
-    st.write("Working directory:", os.getcwd())
-    st.text_area("RAW OUTPUT", output, height=300)
 
     # ==============================
     # 📊 PARSE OUTPUT
@@ -109,29 +98,59 @@ if st.button("🚀 Run Search"):
                 email, link = None, None
 
     # ==============================
-    # 📦 DISPLAY
+    # 📦 PREMIUM DISPLAY
     # ==============================
-    st.subheader(f"Results ({len(results)})")
+    st.markdown("---")
+
+    st.subheader(f"🎯 Results ({len(results)})")
+
+    emails_count = sum(1 for r in results if r[0] != "Not found")
+    st.info(f"📧 {emails_count} posts with emails out of {len(results)}")
 
     if not results:
-        st.warning("No results found → check RAW OUTPUT above")
+        st.warning("No results found → try different query")
     else:
         for i, (email, link) in enumerate(results, 1):
+
+            has_email = email != "Not found"
+
             with st.container():
-                st.markdown(f"### {i}")
+                st.markdown("---")
 
-                colA, colB = st.columns([2, 5])
+                col1, col2 = st.columns([1, 6])
 
-                with colA:
-                    if email != "Not found":
-                        st.code(email)
+                # Index badge
+                with col1:
+                    st.markdown(f"""
+                    <div style="
+                        background:#1f2937;
+                        color:white;
+                        border-radius:10px;
+                        text-align:center;
+                        padding:12px;
+                        font-weight:bold;
+                        font-size:16px;
+                    ">
+                        #{i}
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                # Content
+                with col2:
+
+                    if has_email:
+                        st.markdown("🟢 **Email Found**")
+                        st.text_input(
+                            label="",
+                            value=email,
+                            key=f"email_{i}"
+                        )
                     else:
-                        st.caption("No Email")
+                        st.markdown("🔴 *No Email Available*")
 
-                with colB:
-                    st.markdown(f"[🔗 Open Post]({link})")
-
-                st.divider()
+                    st.markdown(f"""
+                    🔗 <a href="{link}" target="_blank">Open LinkedIn Post</a>
+                    """, unsafe_allow_html=True)
 
 # ==============================
 # 📊 FOOTER
