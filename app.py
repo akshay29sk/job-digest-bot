@@ -48,38 +48,35 @@ with col1:
 with col2:
     roles = st.text_input("Role Keywords", "business analyst, product owner")
 
-# 📍 LOCATION FILTER (NEW)
-location = st.selectbox(
-    "📍 Location",
-    [
-        "global",
-        "india",
-        "pune",
-        "mumbai",
-        "bangalore",
-        "hyderabad",
-        "remote",
-        "india, remote"
-    ]
+# 📍 MULTI-SELECT LOCATION
+location_options = ["india", "pune", "mumbai", "bangalore", "hyderabad", "remote"]
+
+selected_locations = st.multiselect(
+    "📍 Select Locations",
+    location_options,
+    default=["india"]
 )
+
+# convert for backend
+location_str = ", ".join(selected_locations) if selected_locations else "global"
 
 mode = st.selectbox("Email Mode", ["prefer_email", "only_email", "both", "no_email"])
 
 RESULT_LIMIT = 20
 
-# Cache file
-CACHE_FILE = f"cache_{search.replace(' ', '_')}_{location.replace(',', '_')}.txt"
+# cache key
+cache_key = f"{search}_{location_str}".replace(" ", "_").replace(",", "_")
+CACHE_FILE = f"cache_{cache_key}.txt"
 
 # ==============================
 # 🚀 BUTTONS
 # ==============================
 colA, colB = st.columns(2)
-
 run_search = colA.button("🚀 Run Search (Use Cache)")
 refresh = colB.button("🔄 Refresh (Costs API)")
 
 # ==============================
-# 🧠 FETCH LOGIC
+# 🧠 FETCH
 # ==============================
 if run_search or refresh:
 
@@ -93,14 +90,17 @@ if run_search or refresh:
         if use_cache:
             with open(CACHE_FILE, "r") as f:
                 output = f.read()
-            st.success("⚡ Loaded from cache (no cost)")
+            st.success("⚡ Loaded from cache")
         else:
             os.environ["SEARCH_QUERY"] = search
             os.environ["ROLE_KEYWORDS"] = roles
             os.environ["HIRING_KEYWORDS"] = "hiring, looking, urgent, immediate joiner, send resume, share cv"
             os.environ["EMAIL_MODE"] = mode
             os.environ["RESULT_LIMIT"] = str(RESULT_LIMIT)
-            os.environ["LOCATION_KEYWORDS"] = location   # ✅ DYNAMIC
+
+            # 🔥 IMPORTANT: disable strict location filtering
+            os.environ["LOCATION_KEYWORDS"] = "global"
+
             os.environ["MAX_POSTS"] = "30"
             os.environ["POSTED_LIMIT"] = "24h"
 
@@ -132,8 +132,30 @@ if run_search or refresh:
         if "🔗" in line:
             link = line.replace("🔗", "").strip()
             if email and link:
-                results.append((email, link))
+                results.append({
+                    "email": email,
+                    "link": link,
+                    "has_email": email != "Not found"
+                })
                 email, link = None, None
+
+    # ==============================
+    # 🧠 LOCATION MATCH SCORING
+    # ==============================
+    for r in results:
+        text = r["link"].lower()
+
+        match = False
+        for loc in selected_locations:
+            if loc in text:
+                match = True
+                r["match_location"] = loc
+                break
+
+        r["location_match"] = match
+
+    # sort → location match first, then email
+    results.sort(key=lambda x: (not x["location_match"], not x["has_email"]))
 
     # ==============================
     # 📦 DISPLAY
@@ -141,15 +163,15 @@ if run_search or refresh:
     st.markdown("---")
     st.subheader(f"🎯 Results ({len(results)})")
 
-    emails_count = sum(1 for r in results if r[0] != "Not found")
-    st.info(f"📧 {emails_count} posts with emails out of {len(results)}")
+    email_count = sum(1 for r in results if r["has_email"])
+    match_count = sum(1 for r in results if r["location_match"])
+
+    st.info(f"📧 {email_count} emails | 📍 {match_count} location matches")
 
     if not results:
-        st.warning("No results found → try different location/query")
+        st.warning("No results found")
     else:
-        for i, (email, link) in enumerate(results, 1):
-
-            has_email = email != "Not found"
+        for i, r in enumerate(results, 1):
 
             with st.container():
                 st.markdown("---")
@@ -158,27 +180,24 @@ if run_search or refresh:
 
                 with col1:
                     st.markdown(f"""
-                    <div style="
-                        background:#1f2937;
-                        color:white;
-                        border-radius:10px;
-                        text-align:center;
-                        padding:12px;
-                        font-weight:bold;
-                    ">
+                    <div style="background:#1f2937;color:white;border-radius:10px;text-align:center;padding:12px;">
                         #{i}
                     </div>
                     """, unsafe_allow_html=True)
 
                 with col2:
-                    if has_email:
+                    if r["has_email"]:
                         st.markdown("🟢 **Email Found**")
-                        st.text_input("", email, key=f"email_{i}")
+                        st.text_input("", r["email"], key=f"email_{i}")
                     else:
-                        st.markdown("🔴 *No Email Available*")
+                        st.markdown("🔴 *No Email*")
+
+                    # 🔥 LOCATION TAG
+                    if r["location_match"]:
+                        st.markdown(f"📍 **Matches: {r.get('match_location')}**")
 
                     st.markdown(f"""
-                    🔗 <a href="{link}" target="_blank">Open LinkedIn Post</a>
+                    🔗 <a href="{r['link']}" target="_blank">Open LinkedIn Post</a>
                     """, unsafe_allow_html=True)
 
 # ==============================
