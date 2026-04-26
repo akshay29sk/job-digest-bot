@@ -38,7 +38,7 @@ st.markdown("""
 """)
 
 # ==============================
-# 🎯 INPUTS
+# 🎯 BASIC INPUTS
 # ==============================
 col1, col2 = st.columns(2)
 
@@ -48,17 +48,45 @@ with col1:
 with col2:
     roles = st.text_input("Role Keywords", "business analyst, product owner")
 
-# 📍 MULTI-SELECT LOCATION
+# ==============================
+# 📍 LOCATION
+# ==============================
 location_options = ["india", "pune", "mumbai", "bangalore", "hyderabad", "remote"]
 
 selected_locations = st.multiselect(
-    "📍 Select Locations",
+    "📍 Location",
     location_options,
     default=["india"]
 )
 
-# convert for backend
 location_str = ", ".join(selected_locations) if selected_locations else "global"
+
+# ==============================
+# 💼 JOB FILTERS (NEW)
+# ==============================
+st.markdown("### 💼 Job Filters")
+
+col3, col4, col5 = st.columns(3)
+
+with col3:
+    experience = st.multiselect(
+        "Experience",
+        ["entry", "fresher", "junior", "mid", "senior", "lead"]
+    )
+
+with col4:
+    job_type = st.multiselect(
+        "Job Type",
+        ["full-time", "contract", "internship", "freelance"]
+    )
+
+with col5:
+    work_mode = st.multiselect(
+        "Work Mode",
+        ["remote", "hybrid", "onsite"]
+    )
+
+urgency = st.checkbox("⚡ Urgent Hiring Only")
 
 mode = st.selectbox("Email Mode", ["prefer_email", "only_email", "both", "no_email"])
 
@@ -94,13 +122,10 @@ if run_search or refresh:
         else:
             os.environ["SEARCH_QUERY"] = search
             os.environ["ROLE_KEYWORDS"] = roles
-            os.environ["HIRING_KEYWORDS"] = "hiring, looking, urgent, immediate joiner, send resume, share cv"
+            os.environ["HIRING_KEYWORDS"] = "hiring, urgent, immediate joiner"
             os.environ["EMAIL_MODE"] = mode
             os.environ["RESULT_LIMIT"] = str(RESULT_LIMIT)
-
-            # 🔥 IMPORTANT: disable strict location filtering
             os.environ["LOCATION_KEYWORDS"] = "global"
-
             os.environ["MAX_POSTS"] = "30"
             os.environ["POSTED_LIMIT"] = "24h"
 
@@ -118,7 +143,7 @@ if run_search or refresh:
             st.success("✅ Fresh data fetched")
 
     # ==============================
-    # 📊 PARSE OUTPUT
+    # 📊 PARSE
     # ==============================
     results = []
     lines = output.split("\n")
@@ -135,27 +160,47 @@ if run_search or refresh:
                 results.append({
                     "email": email,
                     "link": link,
+                    "text": link.lower(),
                     "has_email": email != "Not found"
                 })
                 email, link = None, None
 
     # ==============================
-    # 🧠 LOCATION MATCH SCORING
+    # 🧠 FILTER + SCORING
     # ==============================
     for r in results:
-        text = r["link"].lower()
+        score = 0
+        text = r["text"]
 
-        match = False
-        for loc in selected_locations:
-            if loc in text:
-                match = True
-                r["match_location"] = loc
-                break
+        # Location match
+        if any(loc in text for loc in selected_locations):
+            score += 2
+            r["location_match"] = True
 
-        r["location_match"] = match
+        # Experience
+        if experience and any(x in text for x in experience):
+            score += 1
 
-    # sort → location match first, then email
-    results.sort(key=lambda x: (not x["location_match"], not x["has_email"]))
+        # Job type
+        if job_type and any(x in text for x in job_type):
+            score += 1
+
+        # Work mode
+        if work_mode and any(x in text for x in work_mode):
+            score += 1
+
+        # Urgency
+        if urgency and any(x in text for x in ["urgent", "immediate"]):
+            score += 2
+
+        # Email priority
+        if r["has_email"]:
+            score += 2
+
+        r["score"] = score
+
+    # sort by score
+    results.sort(key=lambda x: -x["score"])
 
     # ==============================
     # 📦 DISPLAY
@@ -163,15 +208,10 @@ if run_search or refresh:
     st.markdown("---")
     st.subheader(f"🎯 Results ({len(results)})")
 
-    email_count = sum(1 for r in results if r["has_email"])
-    match_count = sum(1 for r in results if r["location_match"])
-
-    st.info(f"📧 {email_count} emails | 📍 {match_count} location matches")
-
     if not results:
         st.warning("No results found")
     else:
-        for i, r in enumerate(results, 1):
+        for i, r in enumerate(results[:RESULT_LIMIT], 1):
 
             with st.container():
                 st.markdown("---")
@@ -179,29 +219,12 @@ if run_search or refresh:
                 col1, col2 = st.columns([1, 6])
 
                 with col1:
-                    st.markdown(f"""
-                    <div style="background:#1f2937;color:white;border-radius:10px;text-align:center;padding:12px;">
-                        #{i}
-                    </div>
-                    """, unsafe_allow_html=True)
+                    st.markdown(f"**#{i}**")
 
                 with col2:
                     if r["has_email"]:
-                        st.markdown("🟢 **Email Found**")
-                        st.text_input("", r["email"], key=f"email_{i}")
+                        st.success(r["email"])
                     else:
-                        st.markdown("🔴 *No Email*")
+                        st.caption("No Email")
 
-                    # 🔥 LOCATION TAG
-                    if r["location_match"]:
-                        st.markdown(f"📍 **Matches: {r.get('match_location')}**")
-
-                    st.markdown(f"""
-                    🔗 <a href="{r['link']}" target="_blank">Open LinkedIn Post</a>
-                    """, unsafe_allow_html=True)
-
-# ==============================
-# 📊 FOOTER
-# ==============================
-st.markdown("---")
-st.caption(f"👀 Visits: {data['visits']} | 🔍 Searches: {data['searches']}")
+                    st.markdown(f"[🔗 Open Post]({r['link']})")
