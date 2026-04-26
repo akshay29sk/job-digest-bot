@@ -2,7 +2,7 @@ name: Daily LinkedIn Hiring Digest
 
 on:
   schedule:
-    - cron: "30 3 * * *"   # 9:00 AM IST
+    - cron: "30 3 * * *"
   workflow_dispatch:
 
 jobs:
@@ -13,16 +13,13 @@ jobs:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      - name: Install dependencies
-        run: pip install requests
+      - run: pip install requests
 
       - name: Run script
         env:
@@ -35,4 +32,5 @@ jobs:
           LOCATION_KEYWORDS: ${{ vars.LOCATION_KEYWORDS }}
           MAX_POSTS: ${{ vars.MAX_POSTS }}
           POSTED_LIMIT: ${{ vars.POSTED_LIMIT }}
+          RESULT_LIMIT: ${{ vars.RESULT_LIMIT }}
         run: python main.py
