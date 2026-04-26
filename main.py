@@ -8,69 +8,63 @@ CHAT_ID = os.getenv("CHAT_ID")
 APIFY_TOKEN = os.getenv("APIFY_TOKEN")
 
 SEARCH_QUERY = os.getenv("SEARCH_QUERY")
+ROLE_KEYWORDS = os.getenv("ROLE_KEYWORDS")
+HIRING_KEYWORDS = os.getenv("HIRING_KEYWORDS")
+MAX_POSTS = int(os.getenv("MAX_POSTS"))
+POSTED_LIMIT = os.getenv("POSTED_LIMIT")
 
 if not SEARCH_QUERY:
-    raise Exception("❌ SEARCH_QUERY is missing. Set it in GitHub Variables.")
+    raise Exception("SEARCH_QUERY missing")
+if not ROLE_KEYWORDS:
+    raise Exception("ROLE_KEYWORDS missing")
+if not HIRING_KEYWORDS:
+    raise Exception("HIRING_KEYWORDS missing")
 
 ACTOR_ID = "harvestapi~linkedin-post-search"
 
 
 def fetch_posts():
-    print("📌 SEARCH QUERY (raw):", SEARCH_QUERY)
-
     queries = [q.strip() for q in SEARCH_QUERY.split(",") if q.strip()]
-    print("🔎 Parsed queries:", queries)
+    print("🔎 Queries:", queries)
 
     run_url = f"https://api.apify.com/v2/acts/{ACTOR_ID}/runs?token={APIFY_TOKEN}"
 
     payload = {
         "searchQueries": queries,
-        "maxPosts": 100,
-        "postedLimit": "24h",
+        "maxPosts": MAX_POSTS,
+        "postedLimit": POSTED_LIMIT,
         "sortBy": "date",
         "scrapeComments": False,
-        "scrapeReactions": False,
-        "postNestedComments": False,
-        "postNestedReactions": False
+        "scrapeReactions": False
     }
-
-    print("\n➡️ Running Apify actor...")
 
     run = requests.post(run_url, json=payload).json()
 
     if "data" not in run:
-        print("❌ Run Error:", run)
+        print("Run error:", run)
         return []
 
-    run_data = run["data"]
-    run_id = run_data["id"]
-    dataset_id = run_data["defaultDatasetId"]
+    run_id = run["data"]["id"]
+    dataset_id = run["data"]["defaultDatasetId"]
 
-    # ⏳ wait for completion
     status_url = f"https://api.apify.com/v2/actor-runs/{run_id}?token={APIFY_TOKEN}"
 
     for _ in range(24):
         status = requests.get(status_url).json()
         state = status["data"]["status"]
-        print("⏳ Status:", state)
+        print("Status:", state)
 
         if state == "SUCCEEDED":
             break
         if state in ["FAILED", "ABORTED"]:
-            print("❌ Run failed")
             return []
 
         time.sleep(5)
 
-    time.sleep(3)
-
     dataset_url = f"https://api.apify.com/v2/datasets/{dataset_id}/items?clean=true&token={APIFY_TOKEN}"
     posts = requests.get(dataset_url).json()
 
-    print(f"📦 Fetched {len(posts)} posts")
-    if posts:
-        print("🧪 Sample post:", posts[0])
-
+    print("Fetched:", len(posts))
     return posts
 
 
@@ -78,33 +72,22 @@ def filter_posts(posts):
     results = []
     seen = set()
 
+    role_words = [x.strip().lower() for x in ROLE_KEYWORDS.split(",")]
+    hiring_words = [x.strip().lower() for x in HIRING_KEYWORDS.split(",")]
+
     for post in posts:
-        # ✅ FIXED FIELD MAPPING
         text = (post.get("content") or "").lower()
         link = post.get("linkedinUrl")
 
         if not text or not link:
             continue
 
-        # ✅ SMART ROLE FILTER (FIXED)
-        if not any(x in text for x in [
-            "analyst",
-            "business analyst",
-            "product owner",
-            "system analyst",
-            "functional analyst"
-        ]):
+        if not any(x in text for x in role_words):
             continue
 
-        # ✅ HIRING SIGNAL
-        if not any(x in text for x in [
-            "hiring", "looking", "opening",
-            "immediate joiner", "urgent",
-            "send resume", "share cv"
-        ]):
+        if not any(x in text for x in hiring_words):
             continue
 
-        # ✅ EMAIL EXTRACTION (WORKING NOW)
         emails = re.findall(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+", text)
         email = emails[0] if emails else "Not found"
 
@@ -128,32 +111,20 @@ def send(msg):
 
 def build_message(results):
     if not results:
-        return f"📭 No results today.\n\n🔎 Query: {SEARCH_QUERY}"
+        return f"No results today\nQuery: {SEARCH_QUERY}"
 
-    msg = f"🔥 LINKEDIN POSTS\n🔎 Query: {SEARCH_QUERY}\n\n"
+    msg = f"LinkedIn Hiring Posts\nQuery: {SEARCH_QUERY}\n\n"
 
     for i, r in enumerate(results, 1):
-        msg += f"""{i}.
-📧 {r['email']}
-🔗 {r['link']}
---------------------
-"""
+        msg += f"{i}\n{r['email']}\n{r['link']}\n\n"
 
     return msg
 
 
 if __name__ == "__main__":
-    try:
-        print("🔐 APIFY TOKEN:", APIFY_TOKEN)
+    posts = fetch_posts()
+    filtered = filter_posts(posts)
+    msg = build_message(filtered)
 
-        posts = fetch_posts()
-        posts = posts[:50]  # performance
-
-        filtered = filter_posts(posts)
-        msg = build_message(filtered)
-
-        print("\n📨 Final Message:\n", msg)
-        send(msg)
-
-    except Exception as e:
-        print("❌ Error:", e)
+    print(msg)
+    send(msg)
