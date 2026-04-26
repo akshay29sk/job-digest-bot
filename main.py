@@ -1,6 +1,6 @@
 # =====================================
 # LinkedIn Hiring Radar
-# Version: v0.2.0
+# Version: v0.2.1
 # File: main.py
 # =====================================
 
@@ -36,7 +36,7 @@ def get_env(name, default=None):
     val = os.getenv(name)
     return val if val else default
 
-SEARCH_QUERY = get_env("SEARCH_QUERY")
+SEARCH_QUERY = get_env("SEARCH_QUERY")  # now only role
 APIFY_TOKEN = get_env("APIFY_TOKEN")
 
 POSTED_LIMIT = get_env("POSTED_LIMIT", "24h")
@@ -47,14 +47,18 @@ EMAIL_MODE = get_env("EMAIL_MODE", "prefer_email").lower()
 ACTOR_ID = "harvestapi~linkedin-post-search"
 
 # ==============================
-# QUERY VARIANTS
+# SMART QUERY GENERATION
 # ==============================
-def generate_queries(base):
-    base = base.lower()
+def generate_queries(role):
+    role = role.lower().strip()
+
     return list(set([
-        base,
-        base.replace("hiring", "looking for"),
-        base.replace("hiring", "job opening")
+        f"hiring {role}",
+        f"looking for {role}",
+        f"{role} job",
+        f"{role} role",
+        f"{role} opening",
+        f"{role} hiring"
     ]))
 
 # ==============================
@@ -110,7 +114,7 @@ def process_posts(posts):
 
     query_embedding = model.encode(SEARCH_QUERY)
 
-    clean_query = SEARCH_QUERY.lower().replace("hiring", "").strip()
+    clean_query = SEARCH_QUERY.lower().strip()
 
     ROLE_MAP = {
         "product owner": ["product owner", "product manager", "po"],
@@ -134,7 +138,7 @@ def process_posts(posts):
         if not any(x in lower_text for x in ["hiring", "job", "role", "opening", "apply"]):
             continue
 
-        # 🔥 SMART ROLE FILTER
+        # ROLE FILTER (phrase-based)
         if not any(role in lower_text for role in role_variants):
             continue
 
@@ -173,7 +177,7 @@ def process_posts(posts):
 
     print("RESULT COUNT:", len(results))
 
-    # Email-first sort
+    # Email-first sorting
     results.sort(
         key=lambda x: (
             x["email"] == "Not found",
