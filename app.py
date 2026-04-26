@@ -38,7 +38,7 @@ st.markdown("""
 """)
 
 # ==============================
-# 🎯 BASIC INPUTS
+# 🎯 INPUTS
 # ==============================
 search = st.text_input("🔎 Search Query (Required)", "hiring business analyst")
 
@@ -48,18 +48,14 @@ roles = st.text_input(
     help="Leave empty to search all roles"
 )
 
-# ==============================
-# 🕒 POSTED TIME FILTER (NEW)
-# ==============================
+# 🕒 Posted filter
 posted_limit = st.selectbox(
     "🕒 Posted Within",
     ["any", "1h", "24h", "week", "month", "3months", "6months", "year"],
     index=2
 )
 
-# ==============================
-# 📍 LOCATION
-# ==============================
+# 📍 Location
 location_options = ["india", "pune", "mumbai", "bangalore", "hyderabad", "remote"]
 
 selected_locations = st.multiselect(
@@ -75,10 +71,6 @@ location_str = ", ".join(selected_locations) if selected_locations else "global"
 # ==============================
 use_filters = st.toggle("⚙️ Enable Advanced Filters")
 
-experience = []
-job_type = []
-work_mode = []
-urgency = False
 result_limit_ui = 20
 
 if use_filters:
@@ -87,24 +79,15 @@ if use_filters:
     col1, col2, col3 = st.columns(3)
 
     with col1:
-        experience = st.multiselect(
-            "Experience",
-            ["entry", "fresher", "junior", "mid", "senior", "lead"]
-        )
+        st.multiselect("Experience", ["entry", "fresher", "junior", "mid", "senior", "lead"])
 
     with col2:
-        job_type = st.multiselect(
-            "Job Type",
-            ["full-time", "contract", "internship", "freelance"]
-        )
+        st.multiselect("Job Type", ["full-time", "contract", "internship", "freelance"])
 
     with col3:
-        work_mode = st.multiselect(
-            "Work Mode",
-            ["remote", "hybrid", "onsite"]
-        )
+        st.multiselect("Work Mode", ["remote", "hybrid", "onsite"])
 
-    urgency = st.checkbox("⚡ Urgent Hiring Only")
+    st.checkbox("⚡ Urgent Hiring Only")
 
     result_limit_ui = st.selectbox(
         "📊 Number of Results",
@@ -134,6 +117,27 @@ run_search = colA.button("🚀 Run Search (Use Cache)")
 refresh = colB.button("🔄 Refresh (Costs API)")
 
 # ==============================
+# 🧠 BACKEND RUNNER
+# ==============================
+def run_backend(search, roles, location_str, mode, result_limit_ui, posted_limit):
+    os.environ["SEARCH_QUERY"] = search
+    os.environ["ROLE_KEYWORDS"] = roles
+    os.environ["HIRING_KEYWORDS"] = "hiring, looking, urgent, opportunity"
+    os.environ["EMAIL_MODE"] = mode
+    os.environ["RESULT_LIMIT"] = str(result_limit_ui)
+    os.environ["LOCATION_KEYWORDS"] = location_str
+    os.environ["POSTED_LIMIT"] = posted_limit
+    os.environ["MAX_POSTS"] = "50"
+
+    result = subprocess.run(
+        [sys.executable, "main.py"],
+        capture_output=True,
+        text=True
+    )
+
+    return result.stdout + "\n\nERROR:\n" + result.stderr
+
+# ==============================
 # 🧠 FETCH
 # ==============================
 if run_search or refresh:
@@ -153,28 +157,19 @@ if run_search or refresh:
             with open(CACHE_FILE, "r") as f:
                 output = f.read()
             st.success("⚡ Loaded from cache")
+
         else:
-            os.environ["SEARCH_QUERY"] = search
-            os.environ["ROLE_KEYWORDS"] = roles
-            os.environ["HIRING_KEYWORDS"] = "hiring, looking, urgent, opportunity"
-            os.environ["EMAIL_MODE"] = mode
-            os.environ["RESULT_LIMIT"] = str(result_limit_ui)
-            os.environ["LOCATION_KEYWORDS"] = location_str
-            os.environ["POSTED_LIMIT"] = posted_limit
-            os.environ["MAX_POSTS"] = "50"
+            output = run_backend(search, roles, location_str, mode, result_limit_ui, posted_limit)
 
-            result = subprocess.run(
-                [sys.executable, "main.py"],
-                capture_output=True,
-                text=True
-            )
-
-            output = result.stdout + "\n\nERROR:\n" + result.stderr
+            if "No results today" in output and posted_limit == "24h":
+                st.warning("⚠️ No results in 24h → expanding to week")
+                output = run_backend(search, roles, location_str, mode, result_limit_ui, "week")
+                posted_limit = "week"
 
             with open(CACHE_FILE, "w") as f:
                 f.write(output)
 
-            st.success("✅ Fresh data fetched")
+            st.success(f"✅ Data fetched ({posted_limit})")
 
     # ==============================
     # 📊 PARSE
@@ -194,15 +189,31 @@ if run_search or refresh:
                 results.append({
                     "email": email,
                     "link": link,
-                    "has_email": email != "Not found"
+                    "has_email": email != "Not found",
+                    "is_fresh": posted_limit in ["1h", "24h"]
                 })
                 email, link = None, None
+
+    # ==============================
+    # ⭐ BEST LEADS
+    # ==============================
+    best_leads = [r for r in results if r["has_email"]][:5]
+
+    if best_leads:
+        st.markdown("## ⭐ Best Leads (Apply First)")
+
+        for i, r in enumerate(best_leads, 1):
+            st.success(f"{i}. {r['email']}")
+            st.markdown(f"[🔗 Open Post]({r['link']})")
+
+        st.markdown("---")
 
     # ==============================
     # 📦 DISPLAY
     # ==============================
     st.markdown("---")
     st.subheader(f"🎯 Results ({len(results)})")
+    st.caption(f"🕒 Showing results from: {posted_limit}")
 
     email_count = sum(1 for r in results if r["has_email"])
     st.info(f"📧 {email_count} posts with emails")
@@ -232,6 +243,16 @@ if run_search or refresh:
                     """, unsafe_allow_html=True)
 
                 with col2:
+                    badges = []
+
+                    if r["has_email"]:
+                        badges.append("📧 Email")
+                    if r["is_fresh"]:
+                        badges.append("🔥 Fresh")
+
+                    if badges:
+                        st.markdown(" ".join(badges))
+
                     if r["has_email"]:
                         st.success(r["email"])
                     else:
