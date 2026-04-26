@@ -1,7 +1,7 @@
 # =====================================
 # LinkedIn Hiring Radar
-# Version: v1.0.0-stable-radar-core
-# Status: STABLE BASELINE (DO NOT MODIFY CORE LOGIC)
+# Version: v1.0.1-stable-patch
+# Status: STABLE + STRICT HIRING FILTER (FIXED)
 # =====================================
 
 import requests, os, re, time, json
@@ -96,26 +96,24 @@ def process(posts):
     roles = ROLE_MAP.get(SEARCH_QUERY.lower(), [SEARCH_QUERY.lower()])
 
     intent_keywords = [
-    "hiring",
-    "we are hiring",
-    "we're hiring",
-    "looking for",
-    "job opening",
-    "opening for",
-    "position",
-    "vacancy",
-    "apply",
-    "apply now",
-    "send your resume",
-    "share your resume",
-    "email your resume",
-    "dm me",
-    "reach out",
-    "urgent hiring"
-]
-    
+        "hiring",
+        "we are hiring",
+        "we're hiring",
+        "looking for",
+        "job opening",
+        "opening for",
+        "position",
+        "vacancy",
+        "apply",
+        "apply now",
+        "send your resume",
+        "share your resume",
+        "email your resume",
+        "dm me",
+        "reach out",
+        "urgent hiring"
+    ]
 
-    # SAFE noise filter
     bad_patterns = [
         "hot take",
         "lessons",
@@ -137,23 +135,22 @@ def process(posts):
 
         clean = re.sub(r"#\w+", "", text.lower())
 
-        # Remove obvious non-job content
+        # 🚫 Remove noise posts
         if any(bp in clean for bp in bad_patterns):
             continue
 
-        # Intent
+        # 🎯 Intent check (STRICT but SAFE)
         intent_match = any(k in clean for k in intent_keywords)
 
-# 🚨 HARD RULE: skip if no hiring intent
-if not intent_match:
-    continue
+        if not intent_match:
+            # allow strong signals (email/apply)
+            if not ("@" in text or "apply" in clean):
+                continue
 
-allow_fallback = False
-
-        # Role match (soft)
+        # Role match
         role_match = any(r in clean for r in roles)
 
-        # Email
+        # Email extraction
         emails = re.findall(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+", text)
         has_email = bool(emails)
         email = emails[0] if has_email else "Not found"
@@ -161,22 +158,17 @@ allow_fallback = False
         if EMAIL_MODE == "only_email" and not has_email:
             continue
 
-        # Semantic
+        # Semantic similarity
         emb = model.encode(text[:400])
         sim = util.cos_sim(query_emb, emb).item()
 
-        # Relaxed threshold
         if sim < 0.08:
-    continue
+            continue
 
         score = sim + (0.3 if has_email else 0)
 
         if "apply" in clean or "send your resume" in clean:
             score += 0.2
-
-        # Final safety
-        if not intent_match and sim < 0.15:
-            continue
 
         obj = {
             "email": email,
