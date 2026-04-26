@@ -27,7 +27,7 @@ RESULT_LIMIT = int(get_env("RESULT_LIMIT", required=False, default="10"))
 ACTOR_ID = "harvestapi~linkedin-post-search"
 
 
-# 🚀 FETCH
+# 🚀 FETCH POSTS
 def fetch_posts():
     queries = [q.strip() for q in SEARCH_QUERY.split(",") if q.strip()]
     print("🔎 Queries:", queries)
@@ -45,7 +45,7 @@ def fetch_posts():
     run = requests.post(run_url, json=payload).json()
 
     if "data" not in run:
-        print("Run error:", run)
+        print("❌ Run error:", run)
         return []
 
     run_id = run["data"]["id"]
@@ -71,7 +71,7 @@ def fetch_posts():
     return posts
 
 
-# 🎯 FILTER
+# 🎯 FILTER POSTS
 def filter_posts(posts):
     results = []
     seen = set()
@@ -90,7 +90,7 @@ def filter_posts(posts):
         if not text or not link:
             continue
 
-        # ❌ spam filter
+        # ❌ remove spam
         if any(x in combined for x in [
             "freshers",
             "comment interested",
@@ -102,15 +102,15 @@ def filter_posts(posts):
         ]):
             continue
 
-        # 🎯 role
+        # 🎯 role filter
         if not any(x in combined for x in role_words):
             continue
 
-        # 🔥 hiring
+        # 🔥 hiring filter
         if not any(x in combined for x in hiring_words):
             continue
 
-        # 🌍 location (optional)
+        # 🌍 location filter (optional)
         if LOCATION_KEYWORDS.lower() != "global":
             if not any(x in combined for x in location_words):
                 continue
@@ -130,19 +130,30 @@ def filter_posts(posts):
 
     print("✅ After filtering:", len(results))
 
-    # ⭐ prioritize emails
+    # ⭐ prioritize email posts
     results.sort(key=lambda x: x["email"] == "Not found")
 
     return results[:RESULT_LIMIT]
 
 
-# 📩 TELEGRAM
+# 📩 TELEGRAM SEND (CHUNKED)
 def send(msg):
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-    requests.post(url, data={"chat_id": CHAT_ID, "text": msg})
+
+    # split into chunks (safe limit)
+    chunks = [msg[i:i+3500] for i in range(0, len(msg), 3500)]
+
+    for chunk in chunks:
+        payload = {
+            "chat_id": CHAT_ID,
+            "text": chunk
+        }
+
+        res = requests.post(url, data=payload)
+        print("📩 Telegram response:", res.text)
 
 
-# 🧾 MESSAGE
+# 🧾 BUILD MESSAGE
 def build_message(results):
     if not results:
         return f"📭 No results today\n\n🔎 Query: {SEARCH_QUERY}"
