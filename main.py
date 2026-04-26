@@ -5,7 +5,6 @@ from query_builder import build_queries
 from scoring import (
     calculate_intent_score,
     calculate_role_score,
-    is_irrelevant,
     final_score
 )
 
@@ -15,24 +14,13 @@ from scoring import (
 SEARCH_QUERY = os.getenv("SEARCH_QUERY", "product owner")
 LOCATION = os.getenv("LOCATION_KEYWORDS", "")
 RESULT_LIMIT = int(os.getenv("RESULT_LIMIT", 20))
+EXTRA_ROLES = os.getenv("ROLE_KEYWORDS", "")
 
 # ==============================
-# MOCK / EXISTING FETCH FUNCTION
-# Replace this with your real function
+# FETCH FUNCTION (YOUR EXISTING)
 # ==============================
 def fetch_linkedin_posts(query):
-    """
-    Expected return format:
-    [
-        {
-            "content": "...",
-            "link": "...",
-            "email": "...",
-            "semantic_score": 0.0
-        }
-    ]
-    """
-    # 👉 Replace with your real scraping/API logic
+    # ⚠️ Replace with your actual logic
     return []
 
 
@@ -54,15 +42,17 @@ for query in queries:
         semantic_score = r.get("semantic_score", 0)
 
         intent_score = calculate_intent_score(content)
-        role_score = calculate_role_score(content)
+        role_score = calculate_role_score(content, EXTRA_ROLES)
 
-        # 🔴 FILTER 1: Must be hiring intent
-        if intent_score < 2:
+        # ✅ Relaxed intent filter
+        if intent_score < 1:
             continue
 
-        # 🔴 FILTER 2: Remove irrelevant roles
-        if is_irrelevant(content, role_score):
-            continue
+        # ✅ Soft role filtering (NOT aggressive)
+        if role_score == 0:
+            # allow only if strong hiring signal
+            if intent_score < 2:
+                continue
 
         score = final_score(semantic_score, intent_score, role_score)
 
@@ -72,21 +62,19 @@ for query in queries:
 
         all_results.append(r)
 
-
 # ==============================
-# SORT + DEDUP
+# DEDUP
 # ==============================
-# Deduplicate by link
 unique = {}
 for r in all_results:
-    unique[r["link"]] = r
+    unique[r.get("link")] = r
 
 all_results = list(unique.values())
 
-# Sort by score
+# ==============================
+# SORT + LIMIT
+# ==============================
 all_results = sorted(all_results, key=lambda x: x["score"], reverse=True)
-
-# Limit
 final_results = all_results[:RESULT_LIMIT]
 
 # ==============================
