@@ -16,65 +16,65 @@ ACTOR_ID = "harvestapi~linkedin-post-search"
 
 
 def fetch_posts():
-    queries = [q.strip() for q in SEARCH_QUERY.split(",") if q.strip()]
-
     print("📌 SEARCH QUERY (raw):", SEARCH_QUERY)
+
+    queries = [q.strip() for q in SEARCH_QUERY.split(",") if q.strip()]
     print("🔎 Parsed queries:", queries)
 
-    all_posts = []
+    run_url = f"https://api.apify.com/v2/acts/{ACTOR_ID}/runs?token={APIFY_TOKEN}"
 
-    for q in queries:
-        print("\n➡️ Running query:", q)
+    # ✅ MATCHES YOUR APIFY JSON
+    payload = {
+        "searchQueries": queries,
+        "maxPosts": 100,
+        "postedLimit": "24h",
+        "sortBy": "date",
+        "scrapeComments": False,
+        "scrapeReactions": False,
+        "postNestedComments": False,
+        "postNestedReactions": False
+    }
 
-        run_url = f"https://api.apify.com/v2/acts/{ACTOR_ID}/runs?token={APIFY_TOKEN}"
+    print("\n➡️ Running Apify actor...")
 
-        payload = {
-            "queries": [q],
-            "maxItems": 20
-        }
+    run = requests.post(run_url, json=payload).json()
 
-        run = requests.post(run_url, json=payload).json()
+    if "data" not in run:
+        print("❌ Run Error:", run)
+        return []
 
-        if "data" not in run:
-            print("❌ Run Error:", run)
-            continue
+    run_data = run["data"]
+    run_id = run_data["id"]
+    dataset_id = run_data["defaultDatasetId"]
 
-        run_data = run["data"]
-        run_id = run_data["id"]
-        dataset_id = run_data["defaultDatasetId"]
+    # ⏳ wait for completion
+    status_url = f"https://api.apify.com/v2/actor-runs/{run_id}?token={APIFY_TOKEN}"
 
-        # ⏳ Wait for completion
-        status_url = f"https://api.apify.com/v2/actor-runs/{run_id}?token={APIFY_TOKEN}"
+    for _ in range(24):
+        status = requests.get(status_url).json()
+        state = status["data"]["status"]
+        print("⏳ Status:", state)
 
-        for _ in range(24):  # ~2 mins max
-            status = requests.get(status_url).json()
-            state = status["data"]["status"]
-            print("⏳ Status:", state)
+        if state == "SUCCEEDED":
+            break
+        if state in ["FAILED", "ABORTED"]:
+            print("❌ Run failed")
+            return []
 
-            if state == "SUCCEEDED":
-                break
-            if state in ["FAILED", "ABORTED"]:
-                print("❌ Run failed")
-                break
+        time.sleep(5)
 
-            time.sleep(5)
+    # small buffer
+    time.sleep(3)
 
-        # ⏳ Ensure dataset ready
-        time.sleep(3)
+    # ✅ CORRECT DATASET FETCH
+    dataset_url = f"https://api.apify.com/v2/datasets/{dataset_id}/items?clean=true&token={APIFY_TOKEN}"
+    posts = requests.get(dataset_url).json()
 
-        dataset_url = f"https://api.apify.com/v2/datasets/{dataset_id}/items?clean=true&token={APIFY_TOKEN}"
-        posts = requests.get(dataset_url).json()
+    print(f"📦 Fetched {len(posts)} posts")
+    if posts:
+        print("🧪 Sample post:", posts[0])
 
-        print(f"📦 Fetched {len(posts)} posts for query: {q}")
-
-        # 👇 Debug sample (first run visibility)
-        if posts:
-            print("🧪 Sample post:", posts[0])
-
-        all_posts.extend(posts)
-
-    print("\n📊 Total posts fetched:", len(all_posts))
-    return all_posts
+    return posts
 
 
 def filter_posts(posts):
@@ -92,7 +92,7 @@ def filter_posts(posts):
         if not any(x in text for x in ["business analyst", "product owner"]):
             continue
 
-        # Hiring intent filter (improved)
+        # Hiring intent filter
         if not any(x in text for x in [
             "hiring", "looking", "opening",
             "immediate joiner", "urgent",
@@ -100,7 +100,6 @@ def filter_posts(posts):
         ]):
             continue
 
-        # Email extraction (not strict)
         emails = re.findall(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+", text)
         email = emails[0] if emails else "Not found"
 
@@ -143,9 +142,7 @@ if __name__ == "__main__":
         print("🔐 APIFY TOKEN:", APIFY_TOKEN)
 
         posts = fetch_posts()
-
-        # Limit dataset for performance
-        posts = posts[:50]
+        posts = posts[:50]  # performance limit
 
         filtered = filter_posts(posts)
         msg = build_message(filtered)
