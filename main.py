@@ -1,7 +1,7 @@
 # =====================================
 # LinkedIn Hiring Radar
-# Version: v0.2.9.2
-# File: main.py
+# Version: v1.0.0-stable-radar-core
+# Status: STABLE BASELINE (DO NOT MODIFY CORE LOGIC)
 # =====================================
 
 import requests, os, re, time, json
