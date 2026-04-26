@@ -1,6 +1,6 @@
 # =====================================
 # LinkedIn Hiring Radar
-# Version: v0.1.4
+# Version: v0.1.4.1
 # File: main.py
 # =====================================
 
@@ -13,25 +13,18 @@ from functools import lru_cache
 from sentence_transformers import SentenceTransformer, util
 from huggingface_hub import login
 
-# ==============================
-# 🔐 HF LOGIN (if token exists)
-# ==============================
+# HF login
 hf_token = os.getenv("HF_TOKEN")
 if hf_token:
+    hf_token = hf_token.strip()
     login(token=hf_token)
 
-# ==============================
-# 🧠 MODEL CACHE (IMPORTANT)
-# ==============================
 @lru_cache(maxsize=1)
 def get_model():
     return SentenceTransformer('all-MiniLM-L6-v2')
 
 model = get_model()
 
-# ==============================
-# ENV
-# ==============================
 def get_env(name, default=None):
     val = os.getenv(name)
     return val if val else default
@@ -47,9 +40,6 @@ LOCATION_KEYWORDS = get_env("LOCATION_KEYWORDS", "global")
 
 ACTOR_ID = "harvestapi~linkedin-post-search"
 
-# ==============================
-# QUERY GENERATION
-# ==============================
 def generate_queries(base):
     base = base.lower()
     return list(set([
@@ -58,9 +48,6 @@ def generate_queries(base):
         base.replace("hiring", "job opening")
     ]))
 
-# ==============================
-# FETCH
-# ==============================
 def fetch_posts():
     all_posts = []
     queries = generate_queries(SEARCH_QUERY)
@@ -102,16 +89,11 @@ def fetch_posts():
 
     return all_posts
 
-# ==============================
-# PROCESS
-# ==============================
 def process_posts(posts):
     results = []
     seen = set()
 
     query_embedding = model.encode(SEARCH_QUERY)
-
-    location_words = [x.strip().lower() for x in LOCATION_KEYWORDS.split(",") if x.strip()]
 
     for post in posts:
         text = (post.get("content") or "")
@@ -123,57 +105,37 @@ def process_posts(posts):
 
         seen.add(link)
 
-        # Intent filter
         if not any(x in lower_text for x in ["hiring", "looking", "apply", "send cv"]):
             continue
 
-        # Location filter
-        if LOCATION_KEYWORDS != "global" and location_words:
-            if not any(x in lower_text for x in location_words):
-                continue
-
-        # Email extraction
         emails = re.findall(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+", lower_text)
         has_email = bool(emails)
         email = emails[0] if has_email else "Not found"
 
         if EMAIL_MODE == "only_email" and not has_email:
             continue
-        if EMAIL_MODE == "no_email" and has_email:
-            continue
 
         # Semantic scoring
         post_embedding = model.encode(text[:500])
         semantic_score = util.cos_sim(query_embedding, post_embedding).item()
 
-        # Rule scoring
-        rule_score = 0
-        if has_email:
-            rule_score += 3
-        if "urgent" in lower_text or "immediate" in lower_text:
-            rule_score += 2
-        if "apply" in lower_text or "send cv" in lower_text:
-            rule_score += 2
-
-        final_score = (semantic_score * 5) + rule_score
-
-        if semantic_score < 0.3:
+        # 🔥 RELAXED THRESHOLD
+        if semantic_score < 0.2:
             continue
 
         results.append({
             "email": email,
             "link": link,
             "content": text,
-            "score": round(final_score, 2),
+            "score": round(semantic_score * 5, 2),
             "semantic_score": round(semantic_score, 2)
         })
+
+    print("RESULT COUNT:", len(results))  # DEBUG
 
     results.sort(key=lambda x: -x["score"])
     return results[:RESULT_LIMIT]
 
-# ==============================
-# TELEGRAM
-# ==============================
 def send(results):
     TOKEN = os.getenv("TELEGRAM_TOKEN")
     CHAT_ID = os.getenv("CHAT_ID")
@@ -181,25 +143,18 @@ def send(results):
     if not TOKEN or not CHAT_ID:
         return
 
-    if not results:
-        msg = f"📭 No results\n\n🔎 {SEARCH_QUERY}"
-    else:
-        msg = f"🔥 {SEARCH_QUERY}\n\n"
-        for r in results[:5]:
-            msg += f"📧 {r['email']}\n🔗 {r['link']}\n\n"
+    msg = f"🔥 {SEARCH_QUERY}\n\n"
+    for r in results[:5]:
+        msg += f"📧 {r['email']}\n🔗 {r['link']}\n\n"
 
     requests.post(
         f"https://api.telegram.org/bot{TOKEN}/sendMessage",
         data={"chat_id": CHAT_ID, "text": msg}
     )
 
-# ==============================
-# RUN
-# ==============================
 if __name__ == "__main__":
     posts = fetch_posts()
     results = process_posts(posts)
 
     send(results)
-
     print(json.dumps(results))
