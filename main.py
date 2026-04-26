@@ -3,6 +3,7 @@ import os
 import re
 import time
 
+# 🔐 ENV VARIABLES
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 APIFY_TOKEN = os.getenv("APIFY_TOKEN")
@@ -10,15 +11,24 @@ APIFY_TOKEN = os.getenv("APIFY_TOKEN")
 SEARCH_QUERY = os.getenv("SEARCH_QUERY")
 ROLE_KEYWORDS = os.getenv("ROLE_KEYWORDS")
 HIRING_KEYWORDS = os.getenv("HIRING_KEYWORDS")
-MAX_POSTS = int(os.getenv("MAX_POSTS"))
+LOCATION_KEYWORDS = os.getenv("LOCATION_KEYWORDS")
 POSTED_LIMIT = os.getenv("POSTED_LIMIT")
 
-if not SEARCH_QUERY:
-    raise Exception("SEARCH_QUERY missing")
-if not ROLE_KEYWORDS:
-    raise Exception("ROLE_KEYWORDS missing")
-if not HIRING_KEYWORDS:
-    raise Exception("HIRING_KEYWORDS missing")
+# ✅ STRICT VALIDATION (NO HARDCODING)
+def get_required_env(name):
+    val = os.getenv(name)
+    if not val:
+        raise Exception(f"❌ {name} is missing in GitHub Variables")
+    return val
+
+SEARCH_QUERY = get_required_env("SEARCH_QUERY")
+ROLE_KEYWORDS = get_required_env("ROLE_KEYWORDS")
+HIRING_KEYWORDS = get_required_env("HIRING_KEYWORDS")
+LOCATION_KEYWORDS = get_required_env("LOCATION_KEYWORDS")
+POSTED_LIMIT = get_required_env("POSTED_LIMIT")
+
+max_posts_env = get_required_env("MAX_POSTS")
+MAX_POSTS = int(max_posts_env)
 
 ACTOR_ID = "harvestapi~linkedin-post-search"
 
@@ -38,10 +48,12 @@ def fetch_posts():
         "scrapeReactions": False
     }
 
+    print("\n➡️ Running Apify actor...")
+
     run = requests.post(run_url, json=payload).json()
 
     if "data" not in run:
-        print("Run error:", run)
+        print("❌ Run Error:", run)
         return []
 
     run_id = run["data"]["id"]
@@ -52,7 +64,7 @@ def fetch_posts():
     for _ in range(24):
         status = requests.get(status_url).json()
         state = status["data"]["status"]
-        print("Status:", state)
+        print("⏳ Status:", state)
 
         if state == "SUCCEEDED":
             break
@@ -64,7 +76,7 @@ def fetch_posts():
     dataset_url = f"https://api.apify.com/v2/datasets/{dataset_id}/items?clean=true&token={APIFY_TOKEN}"
     posts = requests.get(dataset_url).json()
 
-    print("Fetched:", len(posts))
+    print("📦 Fetched:", len(posts))
     return posts
 
 
@@ -74,18 +86,25 @@ def filter_posts(posts):
 
     role_words = [x.strip().lower() for x in ROLE_KEYWORDS.split(",")]
     hiring_words = [x.strip().lower() for x in HIRING_KEYWORDS.split(",")]
+    location_words = [x.strip().lower() for x in LOCATION_KEYWORDS.split(",")]
 
     for post in posts:
         text = (post.get("content") or "").lower()
         link = post.get("linkedinUrl")
+        author_info = (post.get("author", {}).get("info") or "").lower()
+
+        combined = text + " " + author_info
 
         if not text or not link:
             continue
 
-        if not any(x in text for x in role_words):
+        if not any(x in combined for x in role_words):
             continue
 
-        if not any(x in text for x in hiring_words):
+        if not any(x in combined for x in hiring_words):
+            continue
+
+        if not any(x in combined for x in location_words):
             continue
 
         emails = re.findall(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+", text)
@@ -111,12 +130,12 @@ def send(msg):
 
 def build_message(results):
     if not results:
-        return f"No results today\nQuery: {SEARCH_QUERY}"
+        return f"📭 No results today\n\n🔎 Query: {SEARCH_QUERY}"
 
-    msg = f"LinkedIn Hiring Posts\nQuery: {SEARCH_QUERY}\n\n"
+    msg = f"🔥 LINKEDIN POSTS\n🔎 Query: {SEARCH_QUERY}\n\n"
 
     for i, r in enumerate(results, 1):
-        msg += f"{i}\n{r['email']}\n{r['link']}\n\n"
+        msg += f"{i}\n📧 {r['email']}\n🔗 {r['link']}\n\n"
 
     return msg
 
@@ -126,5 +145,5 @@ if __name__ == "__main__":
     filtered = filter_posts(posts)
     msg = build_message(filtered)
 
-    print(msg)
+    print("\n📨 Final Message:\n", msg)
     send(msg)
