@@ -1,7 +1,7 @@
 # =====================================
 # LinkedIn Hiring Radar
-# Version: v1.0.1-stable-patch
-# Status: STABLE + STRICT HIRING FILTER (FIXED)
+# Version: v1.0.2-stable-telegram
+# Status: STABLE + SMART FILTER + TELEGRAM
 # =====================================
 
 import requests, os, re, time, json
@@ -23,6 +23,38 @@ EMAIL_MODE = os.getenv("EMAIL_MODE", "prefer_email").lower()
 
 ACTOR_ID = "harvestapi~linkedin-post-search"
 
+# ==============================
+# TELEGRAM
+# ==============================
+def send_telegram(results):
+    token = os.getenv("TELEGRAM_BOT_TOKEN")
+    chat_id = os.getenv("TELEGRAM_CHAT_ID")
+
+    if not token or not chat_id:
+        return
+
+    for r in results[:5]:  # limit messages
+        msg = f"""🔥 New Job Lead
+
+📧 {r['email']}
+⭐ Score: {r['score']}
+
+{r['content'][:200]}
+
+🔗 {r['link']}
+"""
+
+        try:
+            requests.post(
+                f"https://api.telegram.org/bot{token}/sendMessage",
+                data={"chat_id": chat_id, "text": msg}
+            )
+        except:
+            pass
+
+# ==============================
+# QUERY
+# ==============================
 def generate_queries(role):
     role = role.lower().strip()
     return list(set([
@@ -32,6 +64,9 @@ def generate_queries(role):
         f"looking for {role}"
     ]))
 
+# ==============================
+# FETCH
+# ==============================
 def fetch_posts():
     if not SEARCH_QUERY or not APIFY_TOKEN:
         return []
@@ -77,6 +112,9 @@ def fetch_posts():
 
     return all_posts
 
+# ==============================
+# PROCESS
+# ==============================
 def process(posts):
     results = []
     fallback = []
@@ -95,34 +133,20 @@ def process(posts):
 
     roles = ROLE_MAP.get(SEARCH_QUERY.lower(), [SEARCH_QUERY.lower()])
 
-    intent_keywords = [
-        "hiring",
-        "we are hiring",
-        "we're hiring",
-        "looking for",
-        "job opening",
-        "opening for",
-        "position",
-        "vacancy",
-        "apply",
-        "apply now",
-        "send your resume",
-        "share your resume",
-        "email your resume",
-        "dm me",
-        "reach out",
-        "urgent hiring"
+    strict_intent = [
+        "we are hiring", "we're hiring", "hiring",
+        "looking for", "job opening", "opening for",
+        "apply", "apply now",
+        "send your resume", "share your resume",
+        "email your resume"
     ]
 
+    weak_intent = ["position", "vacancy", "dm me", "reach out"]
+
     bad_patterns = [
-        "hot take",
-        "lessons",
-        "most people think",
-        "discussion",
-        "my thoughts",
-        "opinion",
-        "insight",
-        "story",
+        "hot take", "lessons", "most people think",
+        "discussion", "my thoughts", "opinion",
+        "insight", "story"
     ]
 
     for p in posts:
@@ -135,22 +159,14 @@ def process(posts):
 
         clean = re.sub(r"#\w+", "", text.lower())
 
-        # 🚫 Remove noise posts
+        # ❌ Remove noise
         if any(bp in clean for bp in bad_patterns):
             continue
 
-        # 🎯 Intent check (STRICT but SAFE)
-        intent_match = any(k in clean for k in intent_keywords)
+        strict_match = any(k in clean for k in strict_intent)
+        weak_match = any(k in clean for k in weak_intent)
 
-        if not intent_match:
-            # allow strong signals (email/apply)
-            if not ("@" in text or "apply" in clean):
-                continue
-
-        # Role match
-        role_match = any(r in clean for r in roles)
-
-        # Email extraction
+        # Email
         emails = re.findall(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+", text)
         has_email = bool(emails)
         email = emails[0] if has_email else "Not found"
@@ -158,7 +174,7 @@ def process(posts):
         if EMAIL_MODE == "only_email" and not has_email:
             continue
 
-        # Semantic similarity
+        # Semantic
         emb = model.encode(text[:400])
         sim = util.cos_sim(query_emb, emb).item()
 
@@ -167,8 +183,10 @@ def process(posts):
 
         score = sim + (0.3 if has_email else 0)
 
-        if "apply" in clean or "send your resume" in clean:
+        if "apply" in clean:
             score += 0.2
+
+        role_match = any(r in clean for r in roles)
 
         obj = {
             "email": email,
@@ -178,9 +196,12 @@ def process(posts):
             "semantic_score": round(sim, 2)
         }
 
-        if role_match:
+        # PRIMARY
+        if strict_match:
             results.append(obj)
-        else:
+
+        # FALLBACK
+        elif weak_match or has_email:
             fallback.append(obj)
 
     final = results if results else fallback
@@ -188,10 +209,18 @@ def process(posts):
 
     return final[:RESULT_LIMIT]
 
+# ==============================
+# RUN
+# ==============================
 if __name__ == "__main__":
     try:
         posts = fetch_posts()
         results = process(posts)
+
+        # 🔥 TELEGRAM TRIGGER
+        if results:
+            send_telegram(results)
+
         print(json.dumps(results))
     except:
         print(json.dumps([]))
