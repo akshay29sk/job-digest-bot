@@ -7,21 +7,25 @@ TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 APIFY_TOKEN = os.getenv("APIFY_TOKEN")
 
-SEARCH_QUERY = os.getenv(
-    "SEARCH_QUERY",
-    "hiring business analyst, hiring product owner, business analyst immediate joiner"
-)
+# ✅ STRICT: must come from GitHub Variables
+SEARCH_QUERY = os.getenv("SEARCH_QUERY")
+
+if not SEARCH_QUERY:
+    raise Exception("❌ SEARCH_QUERY is missing. Set it in GitHub Variables.")
 
 ACTOR_ID = "harvestapi~linkedin-post-search"
 
 
-# 🚀 Run actor (async)
 def fetch_posts():
     queries = [q.strip() for q in SEARCH_QUERY.split(",") if q.strip()]
+
+    print("📌 SEARCH QUERY (raw):", SEARCH_QUERY)
+    print("🔎 Parsed queries:", queries)
+
     all_posts = []
 
     for q in queries:
-        print("Running query:", q)
+        print("\n➡️ Running query:", q)
 
         run_url = f"https://api.apify.com/v2/acts/{ACTOR_ID}/runs?token={APIFY_TOKEN}"
 
@@ -33,41 +37,37 @@ def fetch_posts():
         run = requests.post(run_url, json=payload).json()
 
         if "data" not in run:
-            print("Run Error:", run)
+            print("❌ Run Error:", run)
             continue
 
         run_id = run["data"]["id"]
 
-        # ⏳ Wait for completion
         status_url = f"https://api.apify.com/v2/actor-runs/{run_id}?token={APIFY_TOKEN}"
 
-        for _ in range(24):  # max ~2 minutes
+        # ⏳ wait for completion
+        for _ in range(24):  # ~2 minutes max
             status = requests.get(status_url).json()
             state = status["data"]["status"]
-
-            print("Status:", state)
+            print("⏳ Status:", state)
 
             if state == "SUCCEEDED":
                 break
-
             if state in ["FAILED", "ABORTED"]:
-                print("Run failed")
+                print("❌ Run failed")
                 break
 
             time.sleep(5)
 
-        # 📦 Fetch dataset
         dataset_url = f"https://api.apify.com/v2/actor-runs/{run_id}/dataset/items?token={APIFY_TOKEN}"
         posts = requests.get(dataset_url).json()
 
-        print(f"Fetched {len(posts)} posts for query:", q)
+        print(f"📦 Fetched {len(posts)} posts for query: {q}")
         all_posts.extend(posts)
 
-    print("Total posts fetched:", len(all_posts))
+    print("\n📊 Total posts fetched:", len(all_posts))
     return all_posts
 
 
-# 🎯 Filter posts
 def filter_posts(posts):
     results = []
     seen = set()
@@ -101,13 +101,11 @@ def filter_posts(posts):
     return results[:5]
 
 
-# 📩 Send to Telegram
 def send(msg):
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
     requests.post(url, data={"chat_id": CHAT_ID, "text": msg})
 
 
-# 🧾 Build message
 def build_message(results):
     if not results:
         return f"📭 No results today.\n\n🔎 Query: {SEARCH_QUERY}"
@@ -124,17 +122,16 @@ def build_message(results):
     return msg
 
 
-# ▶️ Main
 if __name__ == "__main__":
     try:
-        print("APIFY TOKEN:", APIFY_TOKEN)
+        print("🔐 APIFY TOKEN:", APIFY_TOKEN)
 
         posts = fetch_posts()
         filtered = filter_posts(posts)
         msg = build_message(filtered)
 
-        print(msg)
+        print("\n📨 Final Message:\n", msg)
         send(msg)
 
     except Exception as e:
-        print("Error:", e)
+        print("❌ Error:", e)
