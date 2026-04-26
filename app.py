@@ -51,6 +51,7 @@ posted_limit = st.selectbox(
 
 location_options = ["india", "pune", "mumbai", "bangalore", "hyderabad", "remote"]
 selected_locations = st.multiselect("📍 Location", location_options)
+
 location_str = ", ".join(selected_locations) if selected_locations else "global"
 
 # ==============================
@@ -90,7 +91,7 @@ mode = st.selectbox(
 # CACHE
 # ==============================
 cache_key = f"{search}_{roles}_{location_str}_{posted_limit}_{mode}".replace(" ", "_").replace(",", "_")
-CACHE_FILE = f"cache_{cache_key}.txt"
+CACHE_FILE = f"cache_{cache_key}.json"
 
 # ==============================
 # BUTTONS
@@ -101,7 +102,7 @@ run_btn = col1.button("🚀 Run Search (Cached)")
 refresh_btn = col2.button("🔄 Refresh (Costs API)")
 
 # ==============================
-# BACKEND
+# BACKEND RUNNER
 # ==============================
 def run_backend():
     os.environ["SEARCH_QUERY"] = search
@@ -128,52 +129,36 @@ if run_btn or refresh_btn:
         st.error("Search Query is required")
         st.stop()
 
-    # 🔍 increment search count
     data["searches"] += 1
     save_data(data)
 
-    # CACHE
+    # ==============================
+    # CACHE LOGIC
+    # ==============================
     if run_btn and os.path.exists(CACHE_FILE):
         with open(CACHE_FILE, "r") as f:
-            output = f.read()
+            results = json.load(f)
         st.success("⚡ Loaded from cache")
+
     else:
         output = run_backend()
+
+        try:
+            results = json.loads(output)
+        except Exception as e:
+            st.error("❌ Parsing failed")
+            st.text(output)
+            st.stop()
+
         with open(CACHE_FILE, "w") as f:
-            f.write(output)
+            json.dump(results, f)
+
         st.success("✅ Fresh data fetched")
-
-    # ==============================
-    # PARSE
-    # ==============================
-    results = []
-    lines = output.split("\n")
-
-    email = None
-    content = None
-    link = None
-
-    for line in lines:
-        if "📧" in line:
-            email = line.replace("📧", "").strip()
-        elif "📝" in line:
-            content = line.replace("📝", "").strip()
-        elif "🔗" in line:
-            link = line.replace("🔗", "").strip()
-
-            if email and link:
-                results.append({
-                    "email": email,
-                    "content": content,
-                    "link": link,
-                    "has_email": email != "Not found"
-                })
-                email, content, link = None, None, None
 
     # ==============================
     # BEST LEADS
     # ==============================
-    best = [r for r in results if r["has_email"]][:5]
+    best = [r for r in results if r.get("email") != "Not found"][:5]
 
     if best:
         st.markdown("## ⭐ Best Leads")
@@ -189,18 +174,21 @@ if run_btn or refresh_btn:
     for i, r in enumerate(results, 1):
         st.markdown("---")
 
-        if r["has_email"]:
+        if r.get("score"):
+            st.caption(f"⭐ Score: {r['score']}")
+
+        if r["email"] != "Not found":
             st.success(r["email"])
         else:
             st.caption("❌ No Email")
 
-        if r["content"]:
+        if r.get("content"):
             st.write(r["content"])
 
         st.markdown(f"[🔗 Open Post]({r['link']})")
 
 # ==============================
-# FOOTER ANALYTICS
+# FOOTER
 # ==============================
 st.markdown("---")
 st.caption(f"👀 Visits: {data['visits']} | 🔍 Searches: {data['searches']}")
