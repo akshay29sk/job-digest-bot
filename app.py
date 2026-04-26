@@ -168,7 +168,7 @@ if trigger:
             with col1:
                 st.metric("⭐ Score", r.get("score"))
 
-            with col2:
+            with col1:
                 st.metric("🧠 Semantic", r.get("semantic_score"))
 
             if r.get("score", 0) > 0.7:
