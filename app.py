@@ -1,6 +1,6 @@
 # =====================================
 # LinkedIn Hiring Radar
-# Version: v0.1.5
+# Version: v0.1.5.1
 # File: app.py
 # =====================================
 
@@ -77,4 +77,128 @@ if use_filters:
     with col3:
         st.multiselect("Work Mode", ["remote", "hybrid", "onsite"])
 
-    st.checkbox("⚡ Ur
+    st.checkbox("⚡ Urgent Hiring Only")
+
+    result_limit = st.selectbox("📊 Results Count", [10, 20, 50], index=1)
+
+# ==============================
+# SETTINGS
+# ==============================
+mode = st.selectbox(
+    "📧 Email Mode",
+    ["prefer_email", "only_email", "both", "no_email"]
+)
+
+# ==============================
+# CACHE
+# ==============================
+cache_key = f"{search}_{location_str}_{posted_limit}_{mode}".replace(" ", "_")
+CACHE_FILE = f"cache_{cache_key}.json"
+
+# ==============================
+# BUTTONS
+# ==============================
+col1, col2 = st.columns(2)
+
+run_btn = col1.button("🚀 Run Search (Cached)")
+refresh_btn = col2.button("🔄 Refresh (API Call)")
+
+# ==============================
+# BACKEND
+# ==============================
+def run_backend():
+    os.environ["SEARCH_QUERY"] = search
+    os.environ["ROLE_KEYWORDS"] = roles
+    os.environ["EMAIL_MODE"] = mode
+    os.environ["POSTED_LIMIT"] = posted_limit
+    os.environ["LOCATION_KEYWORDS"] = location_str
+    os.environ["RESULT_LIMIT"] = str(result_limit)
+
+    result = subprocess.run(
+        [sys.executable, "main.py"],
+        capture_output=True,
+        text=True
+    )
+
+    return result
+
+# ==============================
+# EXECUTION
+# ==============================
+if run_btn or refresh_btn:
+
+    if not search.strip():
+        st.error("Search query required")
+        st.stop()
+
+    data["searches"] += 1
+    save_data(data)
+
+    results = []
+    result = None
+
+    if run_btn and os.path.exists(CACHE_FILE):
+        results = json.load(open(CACHE_FILE))
+        st.success("⚡ Loaded from cache")
+
+    else:
+        with st.spinner("Fetching jobs..."):
+            result = run_backend()
+
+        with st.expander("🧪 Debug Info", expanded=False):
+            if result.stderr:
+                st.error("Backend Error")
+                st.text(result.stderr)
+
+            if result.stdout:
+                st.text("Raw Output:")
+                st.text(result.stdout[:1500])
+            else:
+                st.warning("No output received")
+
+        try:
+            results = json.loads(result.stdout) if result.stdout else []
+        except:
+            st.error("❌ Parsing failed")
+            st.stop()
+
+        json.dump(results, open(CACHE_FILE, "w"))
+        st.success("✅ Fresh data fetched")
+
+    # ==============================
+    # BEST LEADS
+    # ==============================
+    best = [r for r in results if r.get("email") != "Not found"][:5]
+
+    if best:
+        st.markdown("## ⭐ Best Leads")
+        for r in best:
+            st.success(r["email"])
+            st.markdown(f"[🔗 Open Post]({r['link']})")
+
+    # ==============================
+    # RESULTS
+    # ==============================
+    st.markdown("## 🎯 Results")
+
+    if not results:
+        st.warning("⚠️ No results found")
+    else:
+        for r in results:
+            st.markdown("---")
+
+            st.caption(f"⭐ {r.get('score')} | 🧠 {r.get('semantic_score')}")
+
+            if r.get("email") != "Not found":
+                st.success(r["email"])
+            else:
+                st.caption("No Email")
+
+            st.write(r.get("content", "")[:400])
+            st.markdown(f"[🔗 Open Post]({r.get('link')})")
+
+# ==============================
+# FOOTER
+# ==============================
+st.markdown("---")
+st.caption(f"👀 Visits: {data['visits']} | 🔍 Searches: {data['searches']}")
