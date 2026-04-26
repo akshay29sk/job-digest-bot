@@ -1,65 +1,166 @@
+# 🔥 LinkedIn Hiring Radar
 
-# 🔥 LinkedIn Hiring Bot (Telegram)
-
-Automated system to fetch LinkedIn hiring posts and send curated results to Telegram.
+> Find high-intent hiring posts (with recruiter emails) faster than LinkedIn feed 🚀
 
 ---
 
-## 🚀 Features
+## 🚀 Version 0.1.0
 
-- Scrapes latest LinkedIn hiring posts via Apify
-- Filters based on role, hiring intent, location
-- Extracts emails from posts
-- Sends results to Telegram
-- Fully configurable via GitHub Variables
-- Supports multiple email filtering modes
+### 🎯 What is this?
+
+LinkedIn Hiring Radar is a lightweight tool that helps job seekers discover real hiring posts on LinkedIn—especially those where recruiters are actively asking for resumes or sharing emails.
+
+Instead of scrolling endlessly, this tool surfaces actionable opportunities.
+
+---
+
+## ✨ Features
+
+### 🔍 Smart Search
+- Multi-query expansion (e.g., hiring → looking for → job opening)
+- Better coverage than single keyword search
+
+### 🧠 Intelligent Filtering
+- Filters only actual hiring posts
+- Removes noise (generic or non-hiring content)
+- Supports:
+  - Role keywords
+  - Location filters
+  - Posted time (1h / 24h / week / month)
+
+### 📧 Email Extraction
+- Automatically extracts recruiter emails from posts
+- Modes:
+  - prefer_email
+  - only_email
+  - both
+  - no_email
+
+### ⭐ Ranking System
+Prioritizes:
+- Posts with emails
+- Urgent hiring signals
+- “Apply / Send CV” intent
+
+### 🖥 UI (Streamlit)
+- Clean and simple interface
+- Shows:
+  - Email
+  - Post preview
+  - Direct LinkedIn link
+  - Score (ranking)
+
+### ⚡ Cache + Refresh
+- Cached runs → fast & free
+- Refresh → fetch latest data (API call)
+
+### 📩 Telegram Alerts
+- Sends top hiring leads directly to Telegram
+
+### 📊 Analytics
+- Tracks:
+  - Visits
+  - Searches
+
+---
+
+## 🏗 Architecture
+
+text Streamlit UI    ↓ Environment Variables    ↓ main.py (Core Engine)    ↓ Apify LinkedIn Scraper    ↓ Filtering + Scoring    ↓ JSON Output    ↓ UI + Telegram Alerts 
 
 ---
 
 ## ⚙️ Setup
 
-### 1. GitHub Secrets
+### 1. Clone repo
 
-- TELEGRAM_TOKEN
-- CHAT_ID
-- APIFY_TOKEN
+bash git clone https://github.com/your-username/job-digest-bot.git cd job-digest-bot 
 
 ---
 
-### 2. GitHub Variables
+### 2. Install dependencies
 
-| Variable | Description | Example |
-|--------|------------|--------|
-| SEARCH_QUERY | Search queries | hiring business analyst |
-| ROLE_KEYWORDS | Role filter | business analyst, product owner |
-| HIRING_KEYWORDS | Hiring intent | hiring, urgent, send resume |
-| LOCATION_KEYWORDS | Location filter | india, remote OR global |
-| MAX_POSTS | Posts fetched | 100 |
-| POSTED_LIMIT | Time filter | 24h |
-| RESULT_LIMIT | Output count | 10 |
-| EMAIL_MODE | Email logic | only_email / no_email / both / prefer_email |
+bash pip install -r requirements.txt 
 
 ---
 
-## 🎯 EMAIL_MODE Options
+### 3. Add environment variables
 
-| Mode | Behavior |
-|------|--------|
-| only_email | Only posts with email |
-| no_email | Only posts without email |
-| both | All posts |
-| prefer_email | Email posts first |
+Create .env or use Streamlit secrets:
+
+env APIFY_TOKEN=your_apify_token TELEGRAM_TOKEN=your_telegram_bot_token CHAT_ID=your_chat_id 
 
 ---
 
-## 🧠 How It Works
+### 4. Run app
 
-1. Fetch posts from Apify
-2. Apply filters
-3. Extract emails
-4. Apply EMAIL_MODE
-5. Send results to Telegram
+bash streamlit run app.py 
 
 ---
 
-## 📩 Output Example
+## 🧪 Example Usage
+
+text Search: hiring customer success Location: india, remote Posted: 24h Mode: prefer_email 
+
+👉 Output:
+- Top hiring posts
+- Recruiter emails
+- Direct apply links
+
+---
+
+## ⚠️ Limitations (v0.1.0)
+
+- Advanced filters are UI-only (not applied in backend yet)
+- Analytics stored locally (may reset on cloud)
+- No company/recruiter extraction yet
+- No authentication / multi-user support
+
+---
+
+## 🎯 Who is this for?
+
+- Job seekers who want direct recruiter access
+- People tired of LinkedIn noise
+- Anyone optimizing for speed + relevance
+
+---
+
+## 🧠 Philosophy
+
+> Speed + Relevance > Volume
+
+Focus:
+- Real hiring intent
+- Actionable leads
+- Minimal noise
+
+---
+
+## 🔮 Roadmap (v0.2.0)
+
+- AI-based ranking
+- Recruiter & company extraction
+- Query insights (which search matched)
+- Persistent analytics (DB)
+- Saved searches & alerts
+
+---
+
+## 🏷 Version
+
+text v0.1.0 — Stable MVP 
+
+---
+
+## 🙌 Contributing
+
+Feel free to fork, improve, and suggest features.
+
+---
+
+## ⭐ If you like this
+
+Give it a star ⭐ — helps visibility!
+
+--
