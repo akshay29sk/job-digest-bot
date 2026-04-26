@@ -1,6 +1,6 @@
 # =====================================
 # LinkedIn Hiring Radar
-# Version: v0.2.5
+# Version: v0.2.6
 # File: app.py
 # =====================================
 
@@ -11,8 +11,8 @@ import sys
 import json
 
 # Load secrets
-for key, value in st.secrets.items():
-    os.environ[key] = value
+for k, v in st.secrets.items():
+    os.environ[k] = v
 
 st.set_page_config(page_title="LinkedIn Hiring Radar", layout="wide")
 
@@ -20,18 +20,12 @@ st.set_page_config(page_title="LinkedIn Hiring Radar", layout="wide")
 # ANALYTICS
 # ==============================
 DATA_FILE = "analytics.json"
+if not os.path.exists(DATA_FILE):
+    json.dump({"visits": 0, "searches": 0}, open(DATA_FILE, "w"))
 
-def load_data():
-    if not os.path.exists(DATA_FILE):
-        return {"visits": 0, "searches": 0}
-    return json.load(open(DATA_FILE))
-
-def save_data(data):
-    json.dump(data, open(DATA_FILE, "w"))
-
-data = load_data()
+data = json.load(open(DATA_FILE))
 data["visits"] += 1
-save_data(data)
+json.dump(data, open(DATA_FILE, "w"))
 
 # ==============================
 # HEADER
@@ -39,89 +33,50 @@ save_data(data)
 st.title("🔥 LinkedIn Hiring Radar")
 
 # ==============================
-# INPUT
+# INPUTS
 # ==============================
-search = st.text_input(
-    "🔎 Role",
-    value="product owner",
-    placeholder="e.g. product owner, business analyst"
-)
+search = st.text_input("🔎 Role", value="product owner")
 
-# ==============================
-# CORE FILTERS
-# ==============================
-posted_limit = st.selectbox(
-    "🕒 Posted",
-    ["any", "1h", "24h", "week", "month"],
-    index=2
-)
+posted = st.selectbox("🕒 Posted", ["any", "1h", "24h", "week", "month"], index=2)
 
-location_options = ["india", "pune", "mumbai", "bangalore", "hyderabad", "remote"]
-selected_locations = st.multiselect("📍 Location", location_options)
+locs = st.multiselect("📍 Location", ["india", "pune", "mumbai", "bangalore", "hyderabad", "remote"])
+location_str = ", ".join(locs) if locs else "global"
 
-location_str = ", ".join(selected_locations) if selected_locations else "global"
+mode = st.selectbox("📧 Email Mode", ["prefer_email", "only_email", "both", "no_email"])
 
-# ==============================
-# ADVANCED FILTERS
-# ==============================
 use_filters = st.toggle("⚙️ Advanced Filters")
 
-result_limit = 20
-
+limit = 20
 if use_filters:
-    st.markdown("### 💼 Filters")
-
-    col1, col2, col3 = st.columns(3)
-
-    with col1:
-        st.multiselect("Experience", ["entry", "junior", "mid", "senior", "lead"])
-
-    with col2:
-        st.multiselect("Job Type", ["full-time", "contract", "internship"])
-
-    with col3:
-        st.multiselect("Work Mode", ["remote", "hybrid", "onsite"])
-
-    st.checkbox("⚡ Urgent Hiring Only")
-
-    result_limit = st.selectbox("📊 Results Count", [10, 20, 50], index=1)
-
-# ==============================
-# SETTINGS
-# ==============================
-mode = st.selectbox(
-    "📧 Email Mode",
-    ["prefer_email", "only_email", "both", "no_email"]
-)
+    limit = st.selectbox("📊 Results Count", [10, 20, 50], index=1)
 
 # ==============================
 # CACHE
 # ==============================
-cache_key = f"{search}_{location_str}_{posted_limit}_{mode}".replace(" ", "_")
-CACHE_FILE = f"cache_{cache_key}.json"
+key = f"{search}_{posted}_{mode}_{limit}"
+cache_file = f"cache_{key}.json"
 
 # ==============================
 # BUTTONS
 # ==============================
-col1, col2 = st.columns(2)
-
-run_btn = col1.button("🚀 Run Search (Cached)")
-refresh_btn = col2.button("🔄 Refresh (API Call)")
+c1, c2 = st.columns(2)
+run_btn = c1.button("🚀 Run Search (Cached)")
+refresh_btn = c2.button("🔄 Refresh (API Call)")
 
 # ==============================
-# BACKEND
+# BACKEND CALL
 # ==============================
-def run_backend():
+def call_backend():
     os.environ["SEARCH_QUERY"] = search
+    os.environ["POSTED_LIMIT"] = posted
     os.environ["EMAIL_MODE"] = mode
-    os.environ["POSTED_LIMIT"] = posted_limit
+    os.environ["RESULT_LIMIT"] = str(limit)
     os.environ["LOCATION_KEYWORDS"] = location_str
-    os.environ["RESULT_LIMIT"] = str(result_limit)
 
     return subprocess.run(
         [sys.executable, "main.py"],
         capture_output=True,
-        text=True
+        text=True,
     )
 
 # ==============================
@@ -129,29 +84,29 @@ def run_backend():
 # ==============================
 if run_btn or refresh_btn:
 
-    if not search.strip():
-        st.error("Role is required")
-        st.stop()
-
     data["searches"] += 1
-    save_data(data)
+    json.dump(data, open(DATA_FILE, "w"))
 
-    # CACHE
-    if run_btn and os.path.exists(CACHE_FILE):
-        results = json.load(open(CACHE_FILE))
+    # cache
+    if run_btn and os.path.exists(cache_file):
+        results = json.load(open(cache_file))
         st.success("⚡ Loaded from cache")
+
     else:
         with st.spinner("Fetching jobs..."):
-            result = run_backend()
+            res = call_backend()
+
+        # DEBUG PANEL (important)
+        with st.expander("🧪 Debug", expanded=False):
+            st.write("STDOUT:", res.stdout[:500])
+            st.write("STDERR:", res.stderr[:500])
 
         try:
-            results = json.loads(result.stdout.strip())
-        except:
-            st.error("Parsing failed")
-            st.text(result.stdout[:1000])
+            results = json.loads(res.stdout.strip())
+        except Exception:
             results = []
 
-        json.dump(results, open(CACHE_FILE, "w"))
+        json.dump(results, open(cache_file, "w"))
         st.success("✅ Fresh data fetched")
 
     # ==============================
@@ -164,16 +119,15 @@ if run_btn or refresh_btn:
     else:
         for r in results:
             st.markdown("---")
+            st.caption(f"⭐ {r['score']} | 🧠 {r['semantic_score']}")
 
-            st.caption(f"⭐ {r.get('score')} | 🧠 {r.get('semantic_score')}")
-
-            if r.get("email") != "Not found":
+            if r["email"] != "Not found":
                 st.success(r["email"])
             else:
                 st.caption("No Email")
 
-            st.write(r.get("content", "")[:400])
-            st.markdown(f"[🔗 Open Post]({r.get('link')})")
+            st.write(r["content"][:400])
+            st.markdown(f"[🔗 Open Post]({r['link']})")
 
 # ==============================
 # FOOTER
