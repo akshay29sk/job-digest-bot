@@ -9,32 +9,31 @@ APIFY_TOKEN = os.getenv("APIFY_TOKEN")
 ACTOR_ID = "harvestapi/linkedin-post-search"
 
 
-# 🚀 Run Apify Actor
+# 🚀 Fetch posts (SYNC API - FIXED)
 def fetch_posts():
-    url = f"https://api.apify.com/v2/acts/{ACTOR_ID}/runs?token={APIFY_TOKEN}"
+    url = f"https://api.apify.com/v2/acts/{ACTOR_ID}/run-sync-get-dataset-items?token={APIFY_TOKEN}"
 
     payload = {
-        "search": "hiring business analyst OR product owner email immediate joiner",
+        "search": "hiring business analyst OR product owner email OR send resume OR share cv",
         "maxItems": 20
     }
 
     res = requests.post(url, json=payload)
-    data = res.json()
 
-    run_id = data["data"]["id"]
+    if res.status_code != 200:
+        print("Apify Error:", res.text)
+        return []
 
-    dataset_url = f"https://api.apify.com/v2/actor-runs/{run_id}/dataset/items?token={APIFY_TOKEN}"
-
-    posts = requests.get(dataset_url).json()
+    posts = res.json()
 
     print("Posts fetched:", len(posts))
     return posts
 
 
-# 🎯 Filter high-value posts
+# 🎯 Filter posts
 def filter_posts(posts):
     results = []
-    seen_links = set()
+    seen = set()
 
     for post in posts:
         text = (post.get("text") or "").lower()
@@ -43,25 +42,21 @@ def filter_posts(posts):
         if not text or not link:
             continue
 
-        # Role filter
         if not any(x in text for x in ["business analyst", "product owner"]):
             continue
 
-        # Hiring intent
         if not any(x in text for x in ["hiring", "looking", "opening"]):
             continue
 
-        # Email extraction
         emails = re.findall(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+", text)
 
         if not emails:
             continue
 
-        # Remove duplicates
-        if link in seen_links:
+        if link in seen:
             continue
 
-        seen_links.add(link)
+        seen.add(link)
 
         results.append({
             "email": emails[0],
@@ -71,18 +66,18 @@ def filter_posts(posts):
     return results[:5]
 
 
-# 📩 Send to Telegram
+# 📩 Telegram
 def send(msg):
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
     requests.post(url, data={"chat_id": CHAT_ID, "text": msg})
 
 
-# 🧾 Build message
+# 🧾 Message
 def build_message(results):
     if not results:
         return "📭 No high-value hiring posts with emails today."
 
-    msg = "🔥 HIGH VALUE LINKEDIN HIRING POSTS\n\n"
+    msg = "🔥 LINKEDIN HIRING POSTS (EMAIL FOUND)\n\n"
 
     for i, r in enumerate(results, 1):
         msg += f"""{i}.
