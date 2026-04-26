@@ -2,12 +2,34 @@ import streamlit as st
 import subprocess
 import os
 import sys
+import json
 
-# Load secrets
+# ==============================
+# 🔐 Load secrets
+# ==============================
 for key, value in st.secrets.items():
     os.environ[key] = value
 
 st.set_page_config(page_title="LinkedIn Hiring Radar", layout="wide")
+
+# ==============================
+# 📊 ANALYTICS
+# ==============================
+DATA_FILE = "analytics.json"
+
+def load_data():
+    if not os.path.exists(DATA_FILE):
+        return {"visits": 0, "searches": 0}
+    with open(DATA_FILE, "r") as f:
+        return json.load(f)
+
+def save_data(data):
+    with open(DATA_FILE, "w") as f:
+        json.dump(data, f)
+
+data = load_data()
+data["visits"] += 1
+save_data(data)
 
 # ==============================
 # HEADER
@@ -19,22 +41,15 @@ st.title("🔥 LinkedIn Hiring Radar")
 # ==============================
 search = st.text_input("🔎 Search Query", "hiring business analyst")
 
-roles = st.text_input(
-    "🎯 Role Keywords (Optional)",
-    "",
-    help="Leave empty for broad search"
-)
+roles = st.text_input("🎯 Role Keywords (Optional)", "")
 
-# 🕒 Posted filter
 posted_limit = st.selectbox(
     "🕒 Posted Within",
     ["any", "1h", "24h", "week", "month"],
     index=2
 )
 
-# 📍 Location
 location_options = ["india", "pune", "mumbai", "bangalore", "hyderabad", "remote"]
-
 selected_locations = st.multiselect("📍 Location", location_options)
 location_str = ", ".join(selected_locations) if selected_locations else "global"
 
@@ -86,7 +101,7 @@ run_btn = col1.button("🚀 Run Search (Cached)")
 refresh_btn = col2.button("🔄 Refresh (Costs API)")
 
 # ==============================
-# BACKEND RUNNER
+# BACKEND
 # ==============================
 def run_backend():
     os.environ["SEARCH_QUERY"] = search
@@ -113,23 +128,23 @@ if run_btn or refresh_btn:
         st.error("Search Query is required")
         st.stop()
 
-    # USE CACHE
+    # 🔍 increment search count
+    data["searches"] += 1
+    save_data(data)
+
+    # CACHE
     if run_btn and os.path.exists(CACHE_FILE):
         with open(CACHE_FILE, "r") as f:
             output = f.read()
         st.success("⚡ Loaded from cache")
-
     else:
         output = run_backend()
-
-        # Save cache
         with open(CACHE_FILE, "w") as f:
             f.write(output)
-
         st.success("✅ Fresh data fetched")
 
     # ==============================
-    # PARSE OUTPUT
+    # PARSE
     # ==============================
     results = []
     lines = output.split("\n")
@@ -141,10 +156,8 @@ if run_btn or refresh_btn:
     for line in lines:
         if "📧" in line:
             email = line.replace("📧", "").strip()
-
         elif "📝" in line:
             content = line.replace("📝", "").strip()
-
         elif "🔗" in line:
             link = line.replace("🔗", "").strip()
 
@@ -164,7 +177,6 @@ if run_btn or refresh_btn:
 
     if best:
         st.markdown("## ⭐ Best Leads")
-
         for r in best:
             st.success(r["email"])
             st.markdown(f"[🔗 Open Post]({r['link']})")
@@ -186,3 +198,9 @@ if run_btn or refresh_btn:
             st.write(r["content"])
 
         st.markdown(f"[🔗 Open Post]({r['link']})")
+
+# ==============================
+# FOOTER ANALYTICS
+# ==============================
+st.markdown("---")
+st.caption(f"👀 Visits: {data['visits']} | 🔍 Searches: {data['searches']}")
