@@ -1,19 +1,15 @@
 # =====================================
 # LinkedIn Hiring Radar
-# Version: v0.2.6
+# Version: v0.2.7
 # File: main.py
 # =====================================
 
-import requests
-import os
-import re
-import time
-import json
+import requests, os, re, time, json
 from functools import lru_cache
 from sentence_transformers import SentenceTransformer, util
 
 # ==============================
-# MODEL (cached)
+# MODEL
 # ==============================
 @lru_cache(maxsize=1)
 def get_model():
@@ -28,47 +24,42 @@ SEARCH_QUERY = os.getenv("SEARCH_QUERY", "").strip()
 APIFY_TOKEN = os.getenv("APIFY_TOKEN")
 
 POSTED_LIMIT = os.getenv("POSTED_LIMIT", "24h")
-MAX_POSTS = int(os.getenv("MAX_POSTS", "50"))
 RESULT_LIMIT = int(os.getenv("RESULT_LIMIT", "20"))
 EMAIL_MODE = os.getenv("EMAIL_MODE", "prefer_email").lower()
 
 ACTOR_ID = "harvestapi~linkedin-post-search"
 
 # ==============================
-# QUERY GENERATION
+# QUERY
 # ==============================
-def generate_queries(role: str):
+def generate_queries(role):
     role = role.lower().strip()
     return list(set([
         f"hiring {role}",
-        f"looking for {role}",
         f"{role} job",
-        f"{role} role",
         f"{role} opening",
+        f"looking for {role}"
     ]))
 
 # ==============================
 # FETCH
 # ==============================
 def fetch_posts():
-    if not APIFY_TOKEN or not SEARCH_QUERY:
+    if not SEARCH_QUERY or not APIFY_TOKEN:
         return []
 
     all_posts = []
-    queries = generate_queries(SEARCH_QUERY)
 
-    for q in queries:
+    for q in generate_queries(SEARCH_QUERY):
         payload = {
-            "maxPosts": max(5, MAX_POSTS // max(1, len(queries))),
+            "maxPosts": 10,
             "searchQueries": [q],
-            "postedLimit": POSTED_LIMIT,
-            "sortBy": "date",
+            "postedLimit": POSTED_LIMIT
         }
 
         run = requests.post(
             f"https://api.apify.com/v2/acts/{ACTOR_ID}/runs?token={APIFY_TOKEN}",
-            json=payload,
-            timeout=60,
+            json=payload
         ).json()
 
         if "data" not in run:
@@ -79,11 +70,10 @@ def fetch_posts():
         dataset_id = None
         for _ in range(20):
             status = requests.get(
-                f"https://api.apify.com/v2/actor-runs/{run_id}?token={APIFY_TOKEN}",
-                timeout=60,
+                f"https://api.apify.com/v2/actor-runs/{run_id}?token={APIFY_TOKEN}"
             ).json()
 
-            if status.get("data", {}).get("status") == "SUCCEEDED":
+            if status["data"]["status"] == "SUCCEEDED":
                 dataset_id = status["data"]["defaultDatasetId"]
                 break
             time.sleep(2)
@@ -92,8 +82,7 @@ def fetch_posts():
             continue
 
         posts = requests.get(
-            f"https://api.apify.com/v2/datasets/{dataset_id}/items?clean=true&token={APIFY_TOKEN}",
-            timeout=60,
+            f"https://api.apify.com/v2/datasets/{dataset_id}/items?clean=true&token={APIFY_TOKEN}"
         ).json()
 
         all_posts.extend(posts)
@@ -101,74 +90,48 @@ def fetch_posts():
     return all_posts
 
 # ==============================
-# HELPERS
-# ==============================
-def is_english(text: str) -> bool:
-    try:
-        text.encode("ascii")
-        return True
-    except Exception:
-        return False
-
-def clean_text(text: str) -> str:
-    text = re.sub(r"#\w+", "", text)  # remove hashtags
-    return text.lower()
-
-# ==============================
 # PROCESS
 # ==============================
-def process_posts(posts):
+def process(posts):
     results = []
     fallback = []
     seen = set()
 
-    if not SEARCH_QUERY:
-        return []
-
-    query_embedding = model.encode(SEARCH_QUERY)
-    clean_query = SEARCH_QUERY.lower().strip()
+    query_emb = model.encode(SEARCH_QUERY)
 
     ROLE_MAP = {
         "product owner": ["product owner", "product manager"],
         "business analyst": ["business analyst"],
-        "customer success manager": ["customer success manager"],
+        "customer success manager": ["customer success manager"]
     }
 
-    role_variants = ROLE_MAP.get(clean_query, [clean_query])
+    roles = ROLE_MAP.get(SEARCH_QUERY.lower(), [SEARCH_QUERY.lower()])
 
-    for post in posts:
-        raw = post.get("content") or ""
-        link = post.get("linkedinUrl")
+    for p in posts:
+        text = p.get("content") or ""
+        link = p.get("linkedinUrl")
 
-        if not raw or not link or link in seen:
+        if not text or not link or link in seen:
             continue
         seen.add(link)
 
-        if not is_english(raw[:300]):
+        clean = re.sub(r"#\w+", "", text.lower())
+
+        if not any(x in clean for x in ["hiring","job","opening","apply"]):
             continue
 
-        text = clean_text(raw)
+        role_match = any(r in clean for r in roles)
 
-        # intent
-        if not any(x in text for x in ["hiring", "job", "role", "opening", "apply"]):
-            continue
-
-        role_match = any(role in text for role in role_variants)
-
-        # email
-        emails = re.findall(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+", raw)
+        emails = re.findall(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+", text)
         has_email = bool(emails)
         email = emails[0] if has_email else "Not found"
 
         if EMAIL_MODE == "only_email" and not has_email:
             continue
-        if EMAIL_MODE == "no_email" and has_email:
-            continue
 
-        emb = model.encode(raw[:400])
-        sim = util.cos_sim(query_embedding, emb).item()
+        emb = model.encode(text[:400])
+        sim = util.cos_sim(query_emb, emb).item()
 
-        # slightly relaxed threshold
         if sim < 0.10:
             continue
 
@@ -177,9 +140,9 @@ def process_posts(posts):
         obj = {
             "email": email,
             "link": link,
-            "content": raw,
-            "score": round(score, 2),
-            "semantic_score": round(sim, 2),
+            "content": text,
+            "score": round(score,2),
+            "semantic_score": round(sim,2)
         }
 
         if role_match:
@@ -188,17 +151,17 @@ def process_posts(posts):
             fallback.append(obj)
 
     final = results if results else fallback
-    final.sort(key=lambda x: (x["email"] == "Not found", -x["score"]))
+    final.sort(key=lambda x: (x["email"]=="Not found",-x["score"]))
+
     return final[:RESULT_LIMIT]
 
 # ==============================
-# RUN (PRINT PURE JSON ONLY)
+# RUN
 # ==============================
 if __name__ == "__main__":
     try:
         posts = fetch_posts()
-        results = process_posts(posts)
-        print(json.dumps(results))  # IMPORTANT: only JSON
-    except Exception as e:
-        # still return valid JSON so UI doesn't break
+        results = process(posts)
+        print(json.dumps(results))   # ONLY JSON
+    except:
         print(json.dumps([]))
