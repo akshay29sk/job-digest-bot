@@ -113,7 +113,7 @@ def process(posts):
     "reach out",
     "urgent hiring"
 ]
-    ]
+    
 
     # SAFE noise filter
     bad_patterns = [
