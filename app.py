@@ -1,6 +1,6 @@
 # =====================================
 # LinkedIn Hiring Radar
-# Version: v0.2.3
+# Version: v0.2.4
 # File: app.py
 # =====================================
 
@@ -11,94 +11,77 @@ import sys
 import json
 import re
 
-for key, value in st.secrets.items():
-    os.environ[key] = value
+for k, v in st.secrets.items():
+    os.environ[k] = v
 
-st.set_page_config(page_title="LinkedIn Hiring Radar", layout="wide")
+st.set_page_config(page_title="Hiring Radar", layout="wide")
 
 # Analytics
-DATA_FILE = "analytics.json"
+file = "analytics.json"
+if not os.path.exists(file):
+    json.dump({"visits":0,"searches":0}, open(file,"w"))
 
-def load_data():
-    if not os.path.exists(DATA_FILE):
-        return {"visits": 0, "searches": 0}
-    return json.load(open(DATA_FILE))
-
-def save_data(data):
-    json.dump(data, open(DATA_FILE, "w"))
-
-data = load_data()
+data = json.load(open(file))
 data["visits"] += 1
-save_data(data)
+json.dump(data, open(file,"w"))
 
 st.title("🔥 LinkedIn Hiring Radar")
 
 search = st.text_input("🔎 Role", "product owner")
 
-posted_limit = st.selectbox(
-    "🕒 Posted Within",
-    ["any", "1h", "24h", "week", "month"],
-    index=2
-)
+posted = st.selectbox("🕒 Posted", ["any","1h","24h","week","month"], index=2)
 
-mode = st.selectbox(
-    "📧 Email Mode",
-    ["prefer_email", "only_email", "both", "no_email"]
-)
+locs = st.multiselect("📍 Location", ["india","pune","mumbai","remote"])
 
-cache_key = f"{search}_{posted_limit}_{mode}".replace(" ", "_")
-CACHE_FILE = f"cache_{cache_key}.json"
+mode = st.selectbox("📧 Email Mode", ["prefer_email","only_email","both","no_email"])
 
-col1, col2 = st.columns(2)
-run_btn = col1.button("🚀 Run Search")
-refresh_btn = col2.button("🔄 Refresh")
+use_filters = st.toggle("⚙️ Advanced Filters")
 
-def run_backend():
-    os.environ["SEARCH_QUERY"] = search
-    os.environ["EMAIL_MODE"] = mode
-    os.environ["POSTED_LIMIT"] = posted_limit
+limit = 20
+if use_filters:
+    limit = st.selectbox("Results", [10,20,50])
 
-    return subprocess.run(
-        [sys.executable, "main.py"],
-        capture_output=True,
-        text=True
-    )
+key = f"{search}_{posted}_{mode}_{limit}"
+cache = f"cache_{key}.json"
 
-if run_btn or refresh_btn:
+c1,c2 = st.columns(2)
+run = c1.button("Run")
+refresh = c2.button("Refresh")
+
+def call():
+    os.environ["SEARCH_QUERY"]=search
+    os.environ["POSTED_LIMIT"]=posted
+    os.environ["EMAIL_MODE"]=mode
+    os.environ["RESULT_LIMIT"]=str(limit)
+    return subprocess.run([sys.executable,"main.py"],capture_output=True,text=True)
+
+if run or refresh:
 
     data["searches"] += 1
-    save_data(data)
+    json.dump(data, open(file,"w"))
 
-    if run_btn and os.path.exists(CACHE_FILE):
-        results = json.load(open(CACHE_FILE))
+    if run and os.path.exists(cache):
+        results = json.load(open(cache))
     else:
-        result = run_backend()
+        r = call()
 
-        try:
-            match = re.search(r"\[.*\]", result.stdout, re.DOTALL)
-            results = json.loads(match.group(0)) if match else []
-        except:
-            st.error("Parsing failed")
-            results = []
+        match = re.search(r"\[.*\]", r.stdout, re.DOTALL)
+        results = json.loads(match.group(0)) if match else []
 
-        json.dump(results, open(CACHE_FILE, "w"))
+        json.dump(results, open(cache,"w"))
 
-    st.markdown("## 🎯 Results")
+    st.markdown("## Results")
 
     if not results:
-        st.warning("No results found")
+        st.warning("No results")
     else:
-        for r in results:
+        for x in results:
             st.markdown("---")
-            st.caption(f"⭐ {r['score']} | 🧠 {r['semantic_score']}")
-
-            if r["email"] != "Not found":
-                st.success(r["email"])
-            else:
-                st.caption("No Email")
-
-            st.write(r["content"][:400])
-            st.markdown(f"[🔗 Open Post]({r['link']})")
+            st.caption(f"{x['score']} | {x['semantic_score']}")
+            if x["email"]!="Not found":
+                st.success(x["email"])
+            st.write(x["content"][:300])
+            st.markdown(x["link"])
 
 st.markdown("---")
-st.caption(f"👀 Visits: {data['visits']} | 🔍 Searches: {data['searches']}")
+st.caption(f"Visits: {data['visits']} | Searches: {data['searches']}")
