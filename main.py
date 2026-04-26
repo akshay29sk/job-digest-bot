@@ -6,53 +6,27 @@ TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 APIFY_TOKEN = os.getenv("APIFY_TOKEN")
 
-# ✅ Use Apify Actor
-ACTOR_ID = "harvestapi~linkedin-post-search"
+# ✅ USE TASK (NOT ACTOR)
+TASK_ID = "available_car/linkedin-post-search-scraper-no-cookies-task"
 
 
-# 🔥 Multiple simple queries (works MUCH better than complex query)
-QUERIES = [
-    "hiring business analyst",
-    "business analyst immediate joiner",
-    "hiring product owner",
-    "product owner agile hiring",
-    "business analyst jobs india"
-]
-
-
-# 🚀 Fetch posts from Apify
 def fetch_posts():
-    all_posts = []
+    url = f"https://api.apify.com/v2/actor-tasks/{TASK_ID}/run-sync-get-dataset-items?token={APIFY_TOKEN}"
 
-    for q in QUERIES:
-        print("Running query:", q)
+    res = requests.post(url)
 
-        url = f"https://api.apify.com/v2/acts/{ACTOR_ID}/run-sync-get-dataset-items?token={APIFY_TOKEN}"
+    if res.status_code != 200:
+        print("Apify Error:", res.text)
+        return []
 
-        payload = {
-            "search": q,
-            "maxItems": 10
-        }
-
-        res = requests.post(url, json=payload)
-
-        if res.status_code != 200:
-            print("Apify Error:", res.text)
-            continue
-
-        posts = res.json()
-        print(f"Fetched {len(posts)} posts for query: {q}")
-
-        all_posts.extend(posts)
-
-    print("Total posts fetched:", len(all_posts))
-    return all_posts
+    posts = res.json()
+    print("Posts fetched:", len(posts))
+    return posts
 
 
-# 🎯 Filter high-value posts
 def filter_posts(posts):
     results = []
-    seen_links = set()
+    seen = set()
 
     for post in posts:
         text = (post.get("text") or "").lower()
@@ -61,25 +35,21 @@ def filter_posts(posts):
         if not text or not link:
             continue
 
-        # Role filter
         if not any(x in text for x in ["business analyst", "product owner"]):
             continue
 
-        # Hiring intent
         if not any(x in text for x in ["hiring", "looking", "opening"]):
             continue
 
-        # Extract emails
         emails = re.findall(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+", text)
 
         if not emails:
             continue
 
-        # Remove duplicates
-        if link in seen_links:
+        if link in seen:
             continue
 
-        seen_links.add(link)
+        seen.add(link)
 
         results.append({
             "email": emails[0],
@@ -89,16 +59,14 @@ def filter_posts(posts):
     return results[:5]
 
 
-# 📩 Send message to Telegram
 def send(msg):
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
     requests.post(url, data={"chat_id": CHAT_ID, "text": msg})
 
 
-# 🧾 Build Telegram message
 def build_message(results):
     if not results:
-        return "📭 No high-value hiring posts with emails found today."
+        return "📭 No high-value hiring posts with emails today."
 
     msg = "🔥 LINKEDIN HIRING POSTS (EMAIL FOUND)\n\n"
 
@@ -112,11 +80,8 @@ def build_message(results):
     return msg
 
 
-# ▶️ Main runner
 if __name__ == "__main__":
     try:
-        print("APIFY TOKEN:", APIFY_TOKEN)
-
         posts = fetch_posts()
         filtered = filter_posts(posts)
         msg = build_message(filtered)
