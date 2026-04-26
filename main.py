@@ -3,41 +3,34 @@ import os
 import re
 import time
 
-# 🔐 ENV VARIABLES
-TOKEN = os.getenv("TELEGRAM_TOKEN")
-CHAT_ID = os.getenv("CHAT_ID")
-APIFY_TOKEN = os.getenv("APIFY_TOKEN")
-
-SEARCH_QUERY = os.getenv("SEARCH_QUERY")
-ROLE_KEYWORDS = os.getenv("ROLE_KEYWORDS")
-HIRING_KEYWORDS = os.getenv("HIRING_KEYWORDS")
-LOCATION_KEYWORDS = os.getenv("LOCATION_KEYWORDS")
-POSTED_LIMIT = os.getenv("POSTED_LIMIT")
-
-# ✅ STRICT VALIDATION (NO HARDCODING)
-def get_required_env(name):
+# 🔐 ENV LOADER
+def get_env(name, required=True, default=None):
     val = os.getenv(name)
     if not val:
-        raise Exception(f"❌ {name} is missing in GitHub Variables")
+        if required and default is None:
+            raise Exception(f"{name} missing")
+        return default
     return val
 
-SEARCH_QUERY = get_required_env("SEARCH_QUERY")
-ROLE_KEYWORDS = get_required_env("ROLE_KEYWORDS")
-HIRING_KEYWORDS = get_required_env("HIRING_KEYWORDS")
-LOCATION_KEYWORDS = get_required_env("LOCATION_KEYWORDS")
-POSTED_LIMIT = get_required_env("POSTED_LIMIT")
+TOKEN = get_env("TELEGRAM_TOKEN")
+CHAT_ID = get_env("CHAT_ID")
+APIFY_TOKEN = get_env("APIFY_TOKEN")
 
-max_posts_env = get_required_env("MAX_POSTS")
-MAX_POSTS = int(max_posts_env)
+SEARCH_QUERY = get_env("SEARCH_QUERY")
+ROLE_KEYWORDS = get_env("ROLE_KEYWORDS")
+HIRING_KEYWORDS = get_env("HIRING_KEYWORDS")
+LOCATION_KEYWORDS = get_env("LOCATION_KEYWORDS", required=False, default="global")
+POSTED_LIMIT = get_env("POSTED_LIMIT")
+MAX_POSTS = int(get_env("MAX_POSTS"))
+RESULT_LIMIT = int(get_env("RESULT_LIMIT", required=False, default="10"))
 
 ACTOR_ID = "harvestapi~linkedin-post-search"
 
 
+# 🚀 FETCH
 def fetch_posts():
     queries = [q.strip() for q in SEARCH_QUERY.split(",") if q.strip()]
     print("🔎 Queries:", queries)
-
-    run_url = f"https://api.apify.com/v2/acts/{ACTOR_ID}/runs?token={APIFY_TOKEN}"
 
     payload = {
         "searchQueries": queries,
@@ -48,12 +41,11 @@ def fetch_posts():
         "scrapeReactions": False
     }
 
-    print("\n➡️ Running Apify actor...")
-
+    run_url = f"https://api.apify.com/v2/acts/{ACTOR_ID}/runs?token={APIFY_TOKEN}"
     run = requests.post(run_url, json=payload).json()
 
     if "data" not in run:
-        print("❌ Run Error:", run)
+        print("Run error:", run)
         return []
 
     run_id = run["data"]["id"]
@@ -62,8 +54,7 @@ def fetch_posts():
     status_url = f"https://api.apify.com/v2/actor-runs/{run_id}?token={APIFY_TOKEN}"
 
     for _ in range(24):
-        status = requests.get(status_url).json()
-        state = status["data"]["status"]
+        state = requests.get(status_url).json()["data"]["status"]
         print("⏳ Status:", state)
 
         if state == "SUCCEEDED":
@@ -80,6 +71,7 @@ def fetch_posts():
     return posts
 
 
+# 🎯 FILTER
 def filter_posts(posts):
     results = []
     seen = set()
@@ -98,14 +90,30 @@ def filter_posts(posts):
         if not text or not link:
             continue
 
+        # ❌ spam filter
+        if any(x in combined for x in [
+            "freshers",
+            "comment interested",
+            "like and share",
+            "tag someone",
+            "walk-in",
+            "bulk hiring",
+            "refer someone"
+        ]):
+            continue
+
+        # 🎯 role
         if not any(x in combined for x in role_words):
             continue
 
+        # 🔥 hiring
         if not any(x in combined for x in hiring_words):
             continue
 
-        if not any(x in combined for x in location_words):
-            continue
+        # 🌍 location (optional)
+        if LOCATION_KEYWORDS.lower() != "global":
+            if not any(x in combined for x in location_words):
+                continue
 
         emails = re.findall(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+", text)
         email = emails[0] if emails else "Not found"
@@ -120,14 +128,21 @@ def filter_posts(posts):
             "link": link
         })
 
-    return results[:5]
+    print("✅ After filtering:", len(results))
+
+    # ⭐ prioritize emails
+    results.sort(key=lambda x: x["email"] == "Not found")
+
+    return results[:RESULT_LIMIT]
 
 
+# 📩 TELEGRAM
 def send(msg):
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
     requests.post(url, data={"chat_id": CHAT_ID, "text": msg})
 
 
+# 🧾 MESSAGE
 def build_message(results):
     if not results:
         return f"📭 No results today\n\n🔎 Query: {SEARCH_QUERY}"
@@ -140,10 +155,11 @@ def build_message(results):
     return msg
 
 
+# ▶️ RUN
 if __name__ == "__main__":
     posts = fetch_posts()
     filtered = filter_posts(posts)
     msg = build_message(filtered)
 
-    print("\n📨 Final Message:\n", msg)
+    print(msg)
     send(msg)
