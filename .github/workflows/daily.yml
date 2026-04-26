@@ -29,5 +29,5 @@ jobs:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           CHAT_ID: ${{ secrets.CHAT_ID }}
           APIFY_TOKEN: ${{ secrets.APIFY_TOKEN }}
-          SEARCH_QUERY: ${{ secrets.SEARCH_QUERY }}
+          SEARCH_QUERY: ${{ vars.SEARCH_QUERY }}
         run: python main.py
