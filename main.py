@@ -1,12 +1,12 @@
 import requests
 import os
 import re
+import time
 
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 APIFY_TOKEN = os.getenv("APIFY_TOKEN")
 
-# ✅ dynamic query from env OR fallback
 SEARCH_QUERY = os.getenv(
     "SEARCH_QUERY",
     "hiring business analyst, hiring product owner, business analyst immediate joiner"
@@ -15,31 +15,59 @@ SEARCH_QUERY = os.getenv(
 ACTOR_ID = "harvestapi~linkedin-post-search"
 
 
+# 🚀 Run actor (async)
 def fetch_posts():
-    url = f"https://api.apify.com/v2/acts/{ACTOR_ID}/run-sync-get-dataset-items?token={APIFY_TOKEN}"
-
-    # ✅ IMPORTANT: convert string → list
     queries = [q.strip() for q in SEARCH_QUERY.split(",") if q.strip()]
+    all_posts = []
 
-    payload = {
-        "queries": queries,   # 🔥 correct field
-        "maxItems": 20
-    }
+    for q in queries:
+        print("Running query:", q)
 
-    print("Using queries:", queries)
+        run_url = f"https://api.apify.com/v2/acts/{ACTOR_ID}/runs?token={APIFY_TOKEN}"
 
-    res = requests.post(url, json=payload)
+        payload = {
+            "queries": [q],
+            "maxItems": 10
+        }
 
-    if res.status_code != 200:
-        print("Apify Error:", res.text)
-        return []
+        run = requests.post(run_url, json=payload).json()
 
-    posts = res.json()
+        if "data" not in run:
+            print("Run Error:", run)
+            continue
 
-    print("Posts fetched:", len(posts))
-    return posts
+        run_id = run["data"]["id"]
+
+        # ⏳ Wait for completion
+        status_url = f"https://api.apify.com/v2/actor-runs/{run_id}?token={APIFY_TOKEN}"
+
+        for _ in range(24):  # max ~2 minutes
+            status = requests.get(status_url).json()
+            state = status["data"]["status"]
+
+            print("Status:", state)
+
+            if state == "SUCCEEDED":
+                break
+
+            if state in ["FAILED", "ABORTED"]:
+                print("Run failed")
+                break
+
+            time.sleep(5)
+
+        # 📦 Fetch dataset
+        dataset_url = f"https://api.apify.com/v2/actor-runs/{run_id}/dataset/items?token={APIFY_TOKEN}"
+        posts = requests.get(dataset_url).json()
+
+        print(f"Fetched {len(posts)} posts for query:", q)
+        all_posts.extend(posts)
+
+    print("Total posts fetched:", len(all_posts))
+    return all_posts
 
 
+# 🎯 Filter posts
 def filter_posts(posts):
     results = []
     seen = set()
@@ -73,11 +101,13 @@ def filter_posts(posts):
     return results[:5]
 
 
+# 📩 Send to Telegram
 def send(msg):
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
     requests.post(url, data={"chat_id": CHAT_ID, "text": msg})
 
 
+# 🧾 Build message
 def build_message(results):
     if not results:
         return f"📭 No results today.\n\n🔎 Query: {SEARCH_QUERY}"
@@ -94,6 +124,7 @@ def build_message(results):
     return msg
 
 
+# ▶️ Main
 if __name__ == "__main__":
     try:
         print("APIFY TOKEN:", APIFY_TOKEN)
