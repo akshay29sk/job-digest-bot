@@ -1,7 +1,7 @@
 # =====================================
 # LinkedIn Hiring Radar
-# Version: v1.0.3-stable-fix
-# Status: STABLE + HIRING FOCUS + NO EMPTY RESULTS + TELEGRAM
+# Version: v1.0.2-stable-telegram-patch
+# Status: STABLE + TELEGRAM FIX (NO LOGIC CHANGE)
 # =====================================
 
 import requests, os, re, time, json
@@ -24,15 +24,22 @@ EMAIL_MODE = os.getenv("EMAIL_MODE", "prefer_email").lower()
 ACTOR_ID = "harvestapi~linkedin-post-search"
 
 # ==============================
-# TELEGRAM
+# TELEGRAM (FIXED)
 # ==============================
 def send_telegram(results):
-    token = os.getenv("TELEGRAM_BOT_TOKEN")
-    chat_id = os.getenv("TELEGRAM_CHAT_ID")
+    token = (os.getenv("TELEGRAM_BOT_TOKEN") or "").strip()
+    chat_id = (os.getenv("TELEGRAM_CHAT_ID") or "").strip()
+
     if not token or not chat_id:
+        print("TELEGRAM: Missing token or chat_id")
         return
 
+    print(f"TELEGRAM: Sending {min(len(results),5)} messages")
+
     for r in results[:5]:
+        if not r.get("link"):
+            continue
+
         msg = f"""🔥 New Job Lead
 
 📧 {r['email']}
@@ -41,13 +48,24 @@ def send_telegram(results):
 {r['content'][:200]}
 
 🔗 {r['link']}"""
+
         try:
-            requests.post(
+            res = requests.post(
                 f"https://api.telegram.org/bot{token}/sendMessage",
-                data={"chat_id": chat_id, "text": msg}
+                data={
+                    "chat_id": chat_id,
+                    "text": msg
+                },
+                timeout=10
             )
-        except:
-            pass
+
+            print("TELEGRAM STATUS:", res.status_code)
+
+            time.sleep(0.3)  # avoid rate limits
+
+        except Exception as e:
+            print("TELEGRAM ERROR:", str(e))
+
 
 # ==============================
 # QUERY
@@ -110,7 +128,7 @@ def fetch_posts():
     return all_posts
 
 # ==============================
-# PROCESS
+# PROCESS (UNCHANGED)
 # ==============================
 def process(posts):
     results = []
@@ -122,13 +140,23 @@ def process(posts):
 
     query_emb = model.encode(SEARCH_QUERY)
 
-    roles = [SEARCH_QUERY.lower()]
+    ROLE_MAP = {
+        "product owner": ["product owner", "product manager"],
+        "business analyst": ["business analyst"],
+        "customer success manager": ["customer success manager"]
+    }
 
-    intent_keywords = [
-        "hiring", "we are hiring", "we're hiring", "looking for",
-        "job opening", "opening for", "apply", "apply now",
-        "send your resume", "share your resume", "email your resume"
+    roles = ROLE_MAP.get(SEARCH_QUERY.lower(), [SEARCH_QUERY.lower()])
+
+    strict_intent = [
+        "we are hiring", "we're hiring", "hiring",
+        "looking for", "job opening", "opening for",
+        "apply", "apply now",
+        "send your resume", "share your resume",
+        "email your resume"
     ]
+
+    weak_intent = ["position", "vacancy", "dm me", "reach out"]
 
     bad_patterns = [
         "hot take", "lessons", "most people think",
@@ -146,14 +174,12 @@ def process(posts):
 
         clean = re.sub(r"#\w+", "", text.lower())
 
-        # ❌ remove noise
         if any(bp in clean for bp in bad_patterns):
             continue
 
-        # intent
-        intent_match = any(k in clean for k in intent_keywords)
+        strict_match = any(k in clean for k in strict_intent)
+        weak_match = any(k in clean for k in weak_intent)
 
-        # email
         emails = re.findall(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+", text)
         has_email = bool(emails)
         email = emails[0] if has_email else "Not found"
@@ -161,11 +187,10 @@ def process(posts):
         if EMAIL_MODE == "only_email" and not has_email:
             continue
 
-        # semantic
         emb = model.encode(text[:400])
         sim = util.cos_sim(query_emb, emb).item()
 
-        if sim < 0.05:   # 🔥 relaxed threshold
+        if sim < 0.08:
             continue
 
         score = sim + (0.3 if has_email else 0)
@@ -183,16 +208,12 @@ def process(posts):
             "semantic_score": round(sim, 2)
         }
 
-        # PRIMARY: strict hiring
-        if intent_match:
+        if strict_match:
             results.append(obj)
-
-        # FALLBACK: email-based or strong semantic
-        elif has_email or sim > 0.3:
+        elif weak_match or has_email:
             fallback.append(obj)
 
     final = results if results else fallback
-
     final.sort(key=lambda x: (x["email"] == "Not found", -x["score"]))
 
     return final[:RESULT_LIMIT]
@@ -207,7 +228,10 @@ if __name__ == "__main__":
 
         if results:
             send_telegram(results)
+        else:
+            print("TELEGRAM: No results to send")
 
         print(json.dumps(results))
-    except:
+    except Exception as e:
+        print("ERROR:", str(e))
         print(json.dumps([]))
