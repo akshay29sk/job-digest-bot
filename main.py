@@ -1,6 +1,6 @@
 # =====================================
 # LinkedIn Hiring Radar
-# Version: v0.1.6
+# Version: v0.1.7
 # File: main.py
 # =====================================
 
@@ -104,7 +104,7 @@ def fetch_posts():
     return all_posts
 
 # ==============================
-# PROCESS POSTS (FINAL LOGIC)
+# PROCESS POSTS
 # ==============================
 def process_posts(posts):
     results = []
@@ -122,11 +122,11 @@ def process_posts(posts):
 
         seen.add(link)
 
-        # 🔥 Relaxed intent detection
+        # Intent filter (relaxed)
         if not any(x in lower_text for x in ["hiring", "job", "role", "opening", "apply"]):
             continue
 
-        # 🔥 Email extraction (clean)
+        # Email extraction
         emails = re.findall(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+", text)
         emails = [e.split("hashtag")[0] for e in emails]
 
@@ -138,15 +138,13 @@ def process_posts(posts):
         if EMAIL_MODE == "no_email" and has_email:
             continue
 
-        # 🔥 Semantic scoring (relaxed)
+        # Semantic scoring
         post_embedding = model.encode(text[:500])
         semantic_score = util.cos_sim(query_embedding, post_embedding).item()
 
-        # 🔥 LOWER THRESHOLD (key fix)
         if semantic_score < 0.15:
             continue
 
-        # 🔥 Final scoring
         score = semantic_score
 
         if has_email:
@@ -164,7 +162,14 @@ def process_posts(posts):
 
     print("RESULT COUNT:", len(results))
 
-    results.sort(key=lambda x: -x["score"])
+    # 🔥 EMAIL-FIRST SORTING
+    results.sort(
+        key=lambda x: (
+            x["email"] == "Not found",
+            -x["score"]
+        )
+    )
+
     return results[:RESULT_LIMIT]
 
 # ==============================
