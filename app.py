@@ -3,6 +3,7 @@ import subprocess
 import os
 import sys
 import json
+import re
 
 # ==============================
 # 🔐 Load secrets
@@ -40,7 +41,6 @@ st.title("🔥 LinkedIn Hiring Radar")
 # INPUTS
 # ==============================
 search = st.text_input("🔎 Search Query", "hiring business analyst")
-
 roles = st.text_input("🎯 Role Keywords (Optional)", "")
 
 posted_limit = st.selectbox(
@@ -133,7 +133,7 @@ if run_btn or refresh_btn:
     save_data(data)
 
     # ==============================
-    # CACHE LOGIC
+    # CACHE
     # ==============================
     if run_btn and os.path.exists(CACHE_FILE):
         with open(CACHE_FILE, "r") as f:
@@ -143,13 +143,23 @@ if run_btn or refresh_btn:
     else:
         output = run_backend()
 
+        # ==============================
+        # 🔥 FIXED JSON EXTRACTION
+        # ==============================
         try:
-            results = json.loads(output)
+            match = re.search(r"\[.*\]", output, re.DOTALL)
+            if not match:
+                raise Exception("No JSON found")
+
+            json_str = match.group(0)
+            results = json.loads(json_str)
+
         except Exception as e:
             st.error("❌ Parsing failed")
-            st.text(output)
+            st.text(output[:2000])
             st.stop()
 
+        # Save cache
         with open(CACHE_FILE, "w") as f:
             json.dump(results, f)
 
@@ -177,7 +187,7 @@ if run_btn or refresh_btn:
         if r.get("score"):
             st.caption(f"⭐ Score: {r['score']}")
 
-        if r["email"] != "Not found":
+        if r.get("email") != "Not found":
             st.success(r["email"])
         else:
             st.caption("❌ No Email")
