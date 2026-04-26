@@ -1,4 +1,4 @@
-name:  LinkedIn Hiring Digest
+name: Daily LinkedIn Hiring Digest
 
 on:
   schedule:
@@ -30,4 +30,9 @@ jobs:
           CHAT_ID: ${{ secrets.CHAT_ID }}
           APIFY_TOKEN: ${{ secrets.APIFY_TOKEN }}
           SEARCH_QUERY: ${{ vars.SEARCH_QUERY }}
+          ROLE_KEYWORDS: ${{ vars.ROLE_KEYWORDS }}
+          HIRING_KEYWORDS: ${{ vars.HIRING_KEYWORDS }}
+          LOCATION_KEYWORDS: ${{ vars.LOCATION_KEYWORDS }}
+          MAX_POSTS: ${{ vars.MAX_POSTS }}
+          POSTED_LIMIT: ${{ vars.POSTED_LIMIT }}
         run: python main.py
