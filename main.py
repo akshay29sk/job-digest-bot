@@ -7,7 +7,6 @@ TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 APIFY_TOKEN = os.getenv("APIFY_TOKEN")
 
-# ✅ STRICT: must come from GitHub Variables
 SEARCH_QUERY = os.getenv("SEARCH_QUERY")
 
 if not SEARCH_QUERY:
@@ -31,7 +30,7 @@ def fetch_posts():
 
         payload = {
             "queries": [q],
-            "maxItems": 10
+            "maxItems": 20
         }
 
         run = requests.post(run_url, json=payload).json()
@@ -40,12 +39,14 @@ def fetch_posts():
             print("❌ Run Error:", run)
             continue
 
-        run_id = run["data"]["id"]
-
-        status_url = f"https://api.apify.com/v2/actor-runs/{run_id}?token={APIFY_TOKEN}"
+        run_data = run["data"]
+        run_id = run_data["id"]
+        dataset_id = run_data["defaultDatasetId"]
 
         # ⏳ wait for completion
-        for _ in range(24):  # ~2 minutes max
+        status_url = f"https://api.apify.com/v2/actor-runs/{run_id}?token={APIFY_TOKEN}"
+
+        for _ in range(24):  # ~2 mins max
             status = requests.get(status_url).json()
             state = status["data"]["status"]
             print("⏳ Status:", state)
@@ -58,7 +59,11 @@ def fetch_posts():
 
             time.sleep(5)
 
-        dataset_url = f"https://api.apify.com/v2/actor-runs/{run_id}/dataset/items?token={APIFY_TOKEN}"
+        # ⏳ small buffer to ensure dataset is ready
+        time.sleep(5)
+
+        # ✅ CORRECT dataset fetch
+        dataset_url = f"https://api.apify.com/v2/datasets/{dataset_id}/items?token={APIFY_TOKEN}"
         posts = requests.get(dataset_url).json()
 
         print(f"📦 Fetched {len(posts)} posts for query: {q}")
