@@ -1,7 +1,7 @@
 # =====================================
 # LinkedIn Hiring Radar
-# Version: v0.2.11
-# File: app.py
+# Version: v1.0.0-stable-radar-core
+# Status: STABLE BASELINE UI
 # =====================================
 
 import streamlit as st
