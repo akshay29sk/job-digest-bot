@@ -1,7 +1,7 @@
 # =====================================
 # LinkedIn Hiring Radar
-# Version: v1.0.2-stable-telegram-patch
-# Status: STABLE + TELEGRAM FIX (NO LOGIC CHANGE)
+# Version: v1.0.2-stable-telegram-patch+
+# Status: STABLE + TELEGRAM + NO EMPTY RESULTS
 # =====================================
 
 import requests, os, re, time, json
@@ -24,7 +24,7 @@ EMAIL_MODE = os.getenv("EMAIL_MODE", "prefer_email").lower()
 ACTOR_ID = "harvestapi~linkedin-post-search"
 
 # ==============================
-# TELEGRAM (FIXED)
+# TELEGRAM
 # ==============================
 def send_telegram(results):
     token = (os.getenv("TELEGRAM_BOT_TOKEN") or "").strip()
@@ -52,20 +52,13 @@ def send_telegram(results):
         try:
             res = requests.post(
                 f"https://api.telegram.org/bot{token}/sendMessage",
-                data={
-                    "chat_id": chat_id,
-                    "text": msg
-                },
+                data={"chat_id": chat_id, "text": msg},
                 timeout=10
             )
-
             print("TELEGRAM STATUS:", res.status_code)
-
-            time.sleep(0.3)  # avoid rate limits
-
+            time.sleep(0.3)
         except Exception as e:
             print("TELEGRAM ERROR:", str(e))
-
 
 # ==============================
 # QUERY
@@ -128,7 +121,7 @@ def fetch_posts():
     return all_posts
 
 # ==============================
-# PROCESS (UNCHANGED)
+# PROCESS
 # ==============================
 def process(posts):
     results = []
@@ -190,7 +183,8 @@ def process(posts):
         emb = model.encode(text[:400])
         sim = util.cos_sim(query_emb, emb).item()
 
-        if sim < 0.08:
+        # 🔥 FIX 1: relaxed threshold
+        if sim < 0.05:
             continue
 
         score = sim + (0.3 if has_email else 0)
@@ -213,7 +207,23 @@ def process(posts):
         elif weak_match or has_email:
             fallback.append(obj)
 
-    final = results if results else fallback
+    # 🔥 FIX 2: guaranteed fallback
+    if results:
+        final = results
+    elif fallback:
+        final = fallback
+    else:
+        final = [
+            {
+                "email": "Not found",
+                "link": p.get("linkedinUrl"),
+                "content": p.get("content", ""),
+                "score": 0,
+                "semantic_score": 0
+            }
+            for p in posts if p.get("content") and p.get("linkedinUrl")
+        ]
+
     final.sort(key=lambda x: (x["email"] == "Not found", -x["score"]))
 
     return final[:RESULT_LIMIT]
@@ -224,7 +234,10 @@ def process(posts):
 if __name__ == "__main__":
     try:
         posts = fetch_posts()
+        print("DEBUG posts:", len(posts))
+
         results = process(posts)
+        print("DEBUG results:", len(results))
 
         if results:
             send_telegram(results)
