@@ -96,9 +96,23 @@ def process(posts):
     roles = ROLE_MAP.get(SEARCH_QUERY.lower(), [SEARCH_QUERY.lower()])
 
     intent_keywords = [
-        "hiring", "we are hiring", "looking for", "job opening",
-        "apply", "send your resume", "share your resume",
-        "email your resume", "position", "vacancy"
+    "hiring",
+    "we are hiring",
+    "we're hiring",
+    "looking for",
+    "job opening",
+    "opening for",
+    "position",
+    "vacancy",
+    "apply",
+    "apply now",
+    "send your resume",
+    "share your resume",
+    "email your resume",
+    "dm me",
+    "reach out",
+    "urgent hiring"
+]
     ]
 
     # SAFE noise filter
@@ -129,7 +143,12 @@ def process(posts):
 
         # Intent
         intent_match = any(k in clean for k in intent_keywords)
-        allow_fallback = not intent_match
+
+# 🚨 HARD RULE: skip if no hiring intent
+if not intent_match:
+    continue
+
+allow_fallback = False
 
         # Role match (soft)
         role_match = any(r in clean for r in roles)
@@ -147,8 +166,8 @@ def process(posts):
         sim = util.cos_sim(query_emb, emb).item()
 
         # Relaxed threshold
-        if sim < 0.08 and not allow_fallback:
-            continue
+        if sim < 0.08:
+    continue
 
         score = sim + (0.3 if has_email else 0)
 
