@@ -1,6 +1,6 @@
 # =====================================
 # LinkedIn Hiring Radar
-# Version: v0.1.1
+# Version: v0.1.2
 # File: main.py
 # =====================================
 
@@ -25,6 +25,7 @@ POSTED_LIMIT = get_env("POSTED_LIMIT", "24h")
 MAX_POSTS = int(get_env("MAX_POSTS", "50"))
 RESULT_LIMIT = int(get_env("RESULT_LIMIT", "20"))
 EMAIL_MODE = get_env("EMAIL_MODE", "prefer_email").lower()
+LOCATION_KEYWORDS = get_env("LOCATION_KEYWORDS", "global")
 
 ACTOR_ID = "harvestapi~linkedin-post-search"
 
@@ -92,6 +93,8 @@ def process_posts(posts):
 
     query_embedding = model.encode(SEARCH_QUERY)
 
+    location_words = [x.strip().lower() for x in LOCATION_KEYWORDS.split(",") if x.strip()]
+
     for post in posts:
         text = (post.get("content") or "")
         lower_text = text.lower()
@@ -102,9 +105,14 @@ def process_posts(posts):
 
         seen.add(link)
 
-        # Basic intent filter
+        # Intent filter
         if not any(x in lower_text for x in ["hiring", "looking", "apply", "send cv"]):
             continue
+
+        # Location filter
+        if LOCATION_KEYWORDS != "global" and location_words:
+            if not any(x in lower_text for x in location_words):
+                continue
 
         # Email extraction
         emails = re.findall(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+", lower_text)
@@ -112,6 +120,8 @@ def process_posts(posts):
         email = emails[0] if has_email else "Not found"
 
         if EMAIL_MODE == "only_email" and not has_email:
+            continue
+        if EMAIL_MODE == "no_email" and has_email:
             continue
 
         # Semantic scoring
@@ -129,7 +139,7 @@ def process_posts(posts):
 
         final_score = (semantic_score * 5) + rule_score
 
-        # Threshold filter
+        # Threshold
         if semantic_score < 0.3:
             continue
 
@@ -174,4 +184,6 @@ if __name__ == "__main__":
     results = process_posts(posts)
 
     send(results)
+
+    # ONLY JSON OUTPUT
     print(json.dumps(results))
