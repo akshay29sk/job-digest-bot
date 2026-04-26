@@ -1,4 +1,4 @@
-name: Daily LinkedIn Hiring Digest
+name:  LinkedIn Hiring Digest
 
 on:
   schedule:
