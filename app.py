@@ -1,6 +1,6 @@
-# # =====================================
+# =====================================
 # LinkedIn Hiring Radar
-# Version: v0.1.4.1
+# Version: v0.1.5
 # File: app.py
 # =====================================
 
@@ -10,41 +10,71 @@ import os
 import sys
 import json
 
+# Load secrets
 for key, value in st.secrets.items():
     os.environ[key] = value
 
+st.set_page_config(page_title="LinkedIn Hiring Radar", layout="wide")
+
+# ==============================
+# ANALYTICS
+# ==============================
+DATA_FILE = "analytics.json"
+
+def load_data():
+    if not os.path.exists(DATA_FILE):
+        return {"visits": 0, "searches": 0}
+    return json.load(open(DATA_FILE))
+
+def save_data(data):
+    json.dump(data, open(DATA_FILE, "w"))
+
+data = load_data()
+data["visits"] += 1
+save_data(data)
+
+# ==============================
+# HEADER
+# ==============================
 st.title("🔥 LinkedIn Hiring Radar")
 
-search = st.text_input("Search", "hiring customer success manager")
+# ==============================
+# INPUTS
+# ==============================
+search = st.text_input("🔎 Search Query", "hiring customer success manager")
 
-def run_backend():
-    os.environ["SEARCH_QUERY"] = search
+roles = st.text_input("🎯 Role Keywords (Optional)", "")
 
-    result = subprocess.run(
-        [sys.executable, "main.py"],
-        capture_output=True,
-        text=True
-    )
+posted_limit = st.selectbox(
+    "🕒 Posted Within",
+    ["any", "1h", "24h", "week", "month"],
+    index=2
+)
 
-    # 🔥 DEBUG
-    if result.stderr:
-        st.error("Backend Error")
-        st.text(result.stderr)
+# Location
+location_options = ["india", "pune", "mumbai", "bangalore", "hyderabad", "remote"]
+selected_locations = st.multiselect("📍 Location", location_options)
+location_str = ", ".join(selected_locations) if selected_locations else "global"
 
-    st.text("OUTPUT:")
-    st.text(result.stdout[:1500])
+# ==============================
+# ADVANCED FILTERS
+# ==============================
+use_filters = st.toggle("⚙️ Enable Advanced Filters")
 
-    return result.stdout
+result_limit = 20
 
-if st.button("Run"):
+if use_filters:
+    st.markdown("### 💼 Job Filters")
 
-    output = run_backend()
+    col1, col2, col3 = st.columns(3)
 
-    try:
-        results = json.loads(output)
-    except:
-        st.error("Parsing failed")
-        st.stop()
+    with col1:
+        st.multiselect("Experience", ["entry", "junior", "mid", "senior", "lead"])
 
-    for r in results:
-        st.write(r["content"][:200])
+    with col2:
+        st.multiselect("Job Type", ["full-time", "contract", "internship"])
+
+    with col3:
+        st.multiselect("Work Mode", ["remote", "hybrid", "onsite"])
+
+    st.checkbox("⚡ Ur
