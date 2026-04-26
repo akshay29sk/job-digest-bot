@@ -154,7 +154,7 @@ def process(posts):
     bad_patterns = [
         "hot take", "lessons", "most people think",
         "discussion", "my thoughts", "opinion",
-        "insight", "story"
+        "insight", "story", "I'm curious"
     ]
 
     for p in posts:
