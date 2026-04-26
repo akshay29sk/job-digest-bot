@@ -4,24 +4,90 @@ import os
 import json
 import sys
 
+# Load secrets
 for key, value in st.secrets.items():
     os.environ[key] = value
 
 st.set_page_config(page_title="LinkedIn Hiring Radar", layout="wide")
 
 # ==============================
+# HEADER
+# ==============================
+st.title("🔥 LinkedIn Hiring Radar")
+
+# ==============================
 # INPUTS
 # ==============================
 search = st.text_input("🔎 Search Query", "hiring business analyst")
-roles = st.text_input("🎯 Role Keywords (Optional)", "")
 
+roles = st.text_input(
+    "🎯 Role Keywords (Optional)",
+    "",
+    help="Leave empty for broad search"
+)
+
+# 🕒 Posted filter
 posted_limit = st.selectbox(
     "🕒 Posted Within",
     ["any", "1h", "24h", "week", "month"],
     index=2
 )
 
-mode = st.selectbox("📧 Email Mode", ["prefer_email", "only_email", "both", "no_email"])
+# 📍 Location
+location_options = ["india", "pune", "mumbai", "bangalore", "hyderabad", "remote"]
+
+selected_locations = st.multiselect(
+    "📍 Location",
+    location_options
+)
+
+location_str = ", ".join(selected_locations) if selected_locations else "global"
+
+# ==============================
+# ⚙️ ADVANCED FILTERS
+# ==============================
+use_filters = st.toggle("⚙️ Enable Advanced Filters")
+
+result_limit = 20
+
+if use_filters:
+    st.markdown("### 💼 Job Filters")
+
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        experience = st.multiselect(
+            "Experience",
+            ["entry", "fresher", "junior", "mid", "senior", "lead"]
+        )
+
+    with col2:
+        job_type = st.multiselect(
+            "Job Type",
+            ["full-time", "contract", "internship", "freelance"]
+        )
+
+    with col3:
+        work_mode = st.multiselect(
+            "Work Mode",
+            ["remote", "hybrid", "onsite"]
+        )
+
+    urgency = st.checkbox("⚡ Urgent Hiring Only")
+
+    result_limit = st.selectbox(
+        "📊 Number of Results",
+        [10, 20, 50],
+        index=1
+    )
+
+# ==============================
+# OTHER SETTINGS
+# ==============================
+mode = st.selectbox(
+    "📧 Email Mode",
+    ["prefer_email", "only_email", "both", "no_email"]
+)
 
 # ==============================
 # RUN BACKEND
@@ -31,6 +97,8 @@ def run_backend():
     os.environ["ROLE_KEYWORDS"] = roles
     os.environ["EMAIL_MODE"] = mode
     os.environ["POSTED_LIMIT"] = posted_limit
+    os.environ["LOCATION_KEYWORDS"] = location_str
+    os.environ["RESULT_LIMIT"] = str(result_limit)
 
     result = subprocess.run(
         [sys.executable, "main.py"],
@@ -41,9 +109,14 @@ def run_backend():
     return result.stdout
 
 # ==============================
-# EXECUTE
+# EXECUTION
 # ==============================
 if st.button("🚀 Run Search"):
+
+    if not search.strip():
+        st.error("Search Query is required")
+        st.stop()
+
     output = run_backend()
 
     results = []
@@ -72,7 +145,22 @@ if st.button("🚀 Run Search"):
                 })
                 email, content, link = None, None, None
 
-    st.subheader(f"Results ({len(results)})")
+    # ==============================
+    # BEST LEADS
+    # ==============================
+    best = [r for r in results if r["has_email"]][:5]
+
+    if best:
+        st.markdown("## ⭐ Best Leads")
+
+        for r in best:
+            st.success(r["email"])
+            st.markdown(f"[🔗 Open Post]({r['link']})")
+
+    # ==============================
+    # RESULTS
+    # ==============================
+    st.markdown("## 🎯 Results")
 
     for i, r in enumerate(results, 1):
         st.markdown("---")
