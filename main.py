@@ -1,53 +1,43 @@
+# =====================================
+# LinkedIn Hiring Radar
+# Version: v0.1.1
+# File: main.py
+# =====================================
+
 import requests
 import os
 import re
 import time
 import json
+from sentence_transformers import SentenceTransformer, util
+
+# Load model once
+model = SentenceTransformer('all-MiniLM-L6-v2')
 
 def get_env(name, default=None):
     val = os.getenv(name)
     return val if val else default
 
 SEARCH_QUERY = get_env("SEARCH_QUERY")
-if not SEARCH_QUERY:
-    raise Exception("SEARCH_QUERY is required")
-
-TOKEN = get_env("TELEGRAM_TOKEN")
-CHAT_ID = get_env("CHAT_ID")
 APIFY_TOKEN = get_env("APIFY_TOKEN")
 
-ROLE_KEYWORDS = get_env("ROLE_KEYWORDS", "")
 POSTED_LIMIT = get_env("POSTED_LIMIT", "24h")
 MAX_POSTS = int(get_env("MAX_POSTS", "50"))
 RESULT_LIMIT = int(get_env("RESULT_LIMIT", "20"))
 EMAIL_MODE = get_env("EMAIL_MODE", "prefer_email").lower()
-LOCATION_KEYWORDS = get_env("LOCATION_KEYWORDS", "global")
 
 ACTOR_ID = "harvestapi~linkedin-post-search"
-
-ROLE_MAP = {
-    "customer success": ["customer success manager", "csm"],
-    "business analyst": ["ba"],
-    "product manager": ["pm", "product owner"]
-}
 
 # ==============================
 # QUERY GENERATION
 # ==============================
 def generate_queries(base):
     base = base.lower()
-    queries = set()
-
-    queries.add(base)
-    queries.add(base.replace("hiring", "looking for"))
-    queries.add(base.replace("hiring", "job opening"))
-
-    for key, vals in ROLE_MAP.items():
-        if key in base:
-            for v in vals:
-                queries.add(base.replace(key, v))
-
-    return list(queries)
+    return list(set([
+        base,
+        base.replace("hiring", "looking for"),
+        base.replace("hiring", "job opening")
+    ]))
 
 # ==============================
 # FETCH
@@ -94,15 +84,17 @@ def fetch_posts():
     return all_posts
 
 # ==============================
-# PROCESS
+# PROCESS (SEMANTIC)
 # ==============================
 def process_posts(posts):
     results = []
     seen = set()
 
+    query_embedding = model.encode(SEARCH_QUERY)
+
     for post in posts:
-        text = (post.get("content") or "").lower()
-        raw = (post.get("content") or "").strip()
+        text = (post.get("content") or "")
+        lower_text = text.lower()
         link = post.get("linkedinUrl")
 
         if not text or not link or link in seen:
@@ -110,23 +102,43 @@ def process_posts(posts):
 
         seen.add(link)
 
-        if not any(x in text for x in ["hiring", "looking", "apply", "send cv"]):
+        # Basic intent filter
+        if not any(x in lower_text for x in ["hiring", "looking", "apply", "send cv"]):
             continue
 
-        emails = re.findall(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+", text)
-        email = emails[0] if emails else "Not found"
+        # Email extraction
+        emails = re.findall(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+", lower_text)
         has_email = bool(emails)
+        email = emails[0] if has_email else "Not found"
 
         if EMAIL_MODE == "only_email" and not has_email:
             continue
 
-        score = 5 if has_email else 0
+        # Semantic scoring
+        post_embedding = model.encode(text[:500])
+        semantic_score = util.cos_sim(query_embedding, post_embedding).item()
+
+        # Rule scoring
+        rule_score = 0
+        if has_email:
+            rule_score += 3
+        if "urgent" in lower_text or "immediate" in lower_text:
+            rule_score += 2
+        if "apply" in lower_text or "send cv" in lower_text:
+            rule_score += 2
+
+        final_score = (semantic_score * 5) + rule_score
+
+        # Threshold filter
+        if semantic_score < 0.3:
+            continue
 
         results.append({
             "email": email,
             "link": link,
-            "content": raw,
-            "score": score
+            "content": text,
+            "score": round(final_score, 2),
+            "semantic_score": round(semantic_score, 2)
         })
 
     results.sort(key=lambda x: -x["score"])
@@ -136,6 +148,9 @@ def process_posts(posts):
 # TELEGRAM
 # ==============================
 def send(results):
+    TOKEN = os.getenv("TELEGRAM_TOKEN")
+    CHAT_ID = os.getenv("CHAT_ID")
+
     if not TOKEN or not CHAT_ID:
         return
 
@@ -159,6 +174,4 @@ if __name__ == "__main__":
     results = process_posts(posts)
 
     send(results)
-
-    # IMPORTANT → JSON output for UI
     print(json.dumps(results))
