@@ -10,7 +10,7 @@ for key, value in st.secrets.items():
 st.set_page_config(page_title="LinkedIn Hiring Finder", layout="wide")
 
 # ==============================
-# 📊 SIMPLE ANALYTICS
+# 📊 ANALYTICS
 # ==============================
 DATA_FILE = "analytics.json"
 
@@ -85,71 +85,4 @@ if st.button("🚀 Run Search"):
 
     with st.spinner("Fetching jobs..."):
 
-        os.environ["SEARCH_QUERY"] = search
-        os.environ["ROLE_KEYWORDS"] = roles
-        os.environ["EMAIL_MODE"] = mode
-        os.environ["RESULT_LIMIT"] = str(RESULT_LIMIT)
-        os.environ["LOCATION_KEYWORDS"] = "global"
-
-        # 🔥 SAFE EXECUTION (no silent failure)
-        result = subprocess.run(
-            ["python3", "main.py"],
-            capture_output=True,
-            text=True
-        )
-
-        output = result.stdout + result.stderr
-
-    st.success("Done!")
-
-    # 🔍 DEBUG VIEW (IMPORTANT)
-    st.text_area("RAW OUTPUT", output, height=250)
-
-    # ==============================
-    # 📊 PARSE OUTPUT
-    # ==============================
-    results = []
-    lines = output.split("\n")
-
-    email = None
-    link = None
-
-    for line in lines:
-        if "📧" in line:
-            email = line.replace("📧", "").strip()
-        if "🔗" in line:
-            link = line.replace("🔗", "").strip()
-            if email and link:
-                results.append((email, link))
-                email, link = None, None
-
-    # ==============================
-    # 📦 DISPLAY
-    # ==============================
-    st.subheader(f"Results ({len(results)})")
-
-    if not results:
-        st.warning("No results found → check RAW OUTPUT above")
-    else:
-        for i, (email, link) in enumerate(results, 1):
-            with st.container():
-                st.markdown(f"### {i}")
-
-                colA, colB = st.columns([2, 5])
-
-                with colA:
-                    if email != "Not found":
-                        st.code(email)
-                    else:
-                        st.caption("No Email")
-
-                with colB:
-                    st.markdown(f"[🔗 Open Post]({link})")
-
-                st.divider()
-
-# ==============================
-# 📊 FOOTER
-# ==============================
-st.markdown("---")
-st.caption(f"👀 Visits: {data['visits']} | 🔍 Searches: {data['searches']}")
+        os
