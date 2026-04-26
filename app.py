@@ -1,6 +1,6 @@
 # =====================================
 # LinkedIn Hiring Radar
-# Version: v0.2.8
+# Version: v0.2.11
 # File: app.py
 # =====================================
 
@@ -38,11 +38,7 @@ st.title("🔥 LinkedIn Hiring Radar")
 # ==============================
 # INPUTS
 # ==============================
-search = st.text_input(
-    "🔎 Role",
-    value="product owner",
-    placeholder="e.g. product owner, business analyst, product manager"
-)
+search = st.text_input("🔎 Role", "product owner")
 
 posted = st.selectbox(
     "🕒 Posted",
@@ -103,7 +99,7 @@ run_btn = col1.button("🚀 Run Search (Cached)")
 refresh_btn = col2.button("🔄 Refresh (API Call)")
 
 # ==============================
-# BACKEND CALL
+# BACKEND
 # ==============================
 def run_backend():
     os.environ["SEARCH_QUERY"] = search
@@ -119,9 +115,11 @@ def run_backend():
     )
 
 # ==============================
-# EXECUTION
+# EXECUTION (FIXED)
 # ==============================
-if run_btn or refresh_btn:
+trigger = run_btn or refresh_btn
+
+if trigger:
 
     if not search.strip():
         st.error("Role is required")
@@ -130,9 +128,7 @@ if run_btn or refresh_btn:
     data["searches"] += 1
     json.dump(data, open(DATA_FILE, "w"))
 
-    # ==============================
-    # CACHE FLOW
-    # ==============================
+    # CACHE
     if run_btn and os.path.exists(CACHE_FILE):
         st.info("⚡ Loading cached results...")
         results = json.load(open(CACHE_FILE))
@@ -141,16 +137,12 @@ if run_btn or refresh_btn:
         with st.spinner("🚀 Fetching jobs from LinkedIn..."):
             result = run_backend()
 
-        # ==============================
-        # DEBUG PANEL
-        # ==============================
-        with st.expander("🧪 Debug", expanded=False):
+        # DEBUG (SAFE)
+        with st.expander("🧪 Debug Info", expanded=False):
+            st.write("Button Triggered:", trigger)
             st.write("STDOUT:", result.stdout[:500])
             st.write("STDERR:", result.stderr[:500])
 
-        # ==============================
-        # SAFE PARSING
-        # ==============================
         try:
             results = json.loads(result.stdout.strip()) if result.stdout.strip() else []
         except:
@@ -171,7 +163,6 @@ if run_btn or refresh_btn:
         for r in results:
             st.markdown("---")
 
-            # 🔥 SCORE DISPLAY (RESTORED)
             col1, col2 = st.columns(2)
 
             with col1:
@@ -180,22 +171,17 @@ if run_btn or refresh_btn:
             with col2:
                 st.metric("🧠 Semantic", r.get("semantic_score"))
 
-            # Match quality indicator
             if r.get("score", 0) > 0.7:
                 st.success("🔥 High Match")
             elif r.get("score", 0) > 0.5:
                 st.info("👍 Good Match")
 
-            # Email
             if r.get("email") != "Not found":
                 st.success(r["email"])
             else:
                 st.caption("No Email")
 
-            # Content
             st.write(r.get("content", "")[:400])
-
-            # Link
             st.markdown(f"[🔗 Open Post]({r.get('link')})")
 
 # ==============================
