@@ -80,10 +80,11 @@ if run or refresh:
     json.dump(data,open(file,"w"))
 
     if run and os.path.exists(cache):
-        results=json.load(open(cache))
-        st.success("⚡ Loaded from cache")
+    st.info("⚡ Loading cached results...")
+    results = json.load(open(cache))
     else:
-        res=call()
+with st.spinner("🚀 Fetching jobs from LinkedIn..."):
+    res = call()
 
         with st.expander("🧪 Debug"):
             st.write("STDOUT:",res.stdout[:300])
