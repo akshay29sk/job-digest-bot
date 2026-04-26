@@ -62,37 +62,48 @@ selected_locations = st.multiselect(
 location_str = ", ".join(selected_locations) if selected_locations else "global"
 
 # ==============================
-# 💼 JOB FILTERS (NEW)
+# 🔘 TOGGLE FOR JOB FILTERS
 # ==============================
-st.markdown("### 💼 Job Filters")
+use_filters = st.toggle("⚙️ Enable Advanced Job Filters")
 
-col3, col4, col5 = st.columns(3)
+experience = []
+job_type = []
+work_mode = []
+urgency = False
 
-with col3:
-    experience = st.multiselect(
-        "Experience",
-        ["entry", "fresher", "junior", "mid", "senior", "lead"]
-    )
+if use_filters:
+    st.markdown("### 💼 Job Filters")
 
-with col4:
-    job_type = st.multiselect(
-        "Job Type",
-        ["full-time", "contract", "internship", "freelance"]
-    )
+    col3, col4, col5 = st.columns(3)
 
-with col5:
-    work_mode = st.multiselect(
-        "Work Mode",
-        ["remote", "hybrid", "onsite"]
-    )
+    with col3:
+        experience = st.multiselect(
+            "Experience",
+            ["entry", "fresher", "junior", "mid", "senior", "lead"]
+        )
 
-urgency = st.checkbox("⚡ Urgent Hiring Only")
+    with col4:
+        job_type = st.multiselect(
+            "Job Type",
+            ["full-time", "contract", "internship", "freelance"]
+        )
 
+    with col5:
+        work_mode = st.multiselect(
+            "Work Mode",
+            ["remote", "hybrid", "onsite"]
+        )
+
+    urgency = st.checkbox("⚡ Urgent Hiring Only")
+
+# ==============================
+# ⚙️ OTHER SETTINGS
+# ==============================
 mode = st.selectbox("Email Mode", ["prefer_email", "only_email", "both", "no_email"])
 
 RESULT_LIMIT = 20
 
-# cache key
+# Cache key
 cache_key = f"{search}_{location_str}".replace(" ", "_").replace(",", "_")
 CACHE_FILE = f"cache_{cache_key}.txt"
 
@@ -122,7 +133,7 @@ if run_search or refresh:
         else:
             os.environ["SEARCH_QUERY"] = search
             os.environ["ROLE_KEYWORDS"] = roles
-            os.environ["HIRING_KEYWORDS"] = "hiring, urgent, immediate joiner"
+            os.environ["HIRING_KEYWORDS"] = "hiring, looking, urgent, immediate joiner"
             os.environ["EMAIL_MODE"] = mode
             os.environ["RESULT_LIMIT"] = str(RESULT_LIMIT)
             os.environ["LOCATION_KEYWORDS"] = "global"
@@ -166,7 +177,7 @@ if run_search or refresh:
                 email, link = None, None
 
     # ==============================
-    # 🧠 FILTER + SCORING
+    # 🧠 SCORING
     # ==============================
     for r in results:
         score = 0
@@ -175,31 +186,25 @@ if run_search or refresh:
         # Location match
         if any(loc in text for loc in selected_locations):
             score += 2
-            r["location_match"] = True
 
-        # Experience
-        if experience and any(x in text for x in experience):
-            score += 1
+        if use_filters:
+            if experience and any(x in text for x in experience):
+                score += 1
 
-        # Job type
-        if job_type and any(x in text for x in job_type):
-            score += 1
+            if job_type and any(x in text for x in job_type):
+                score += 1
 
-        # Work mode
-        if work_mode and any(x in text for x in work_mode):
-            score += 1
+            if work_mode and any(x in text for x in work_mode):
+                score += 1
 
-        # Urgency
-        if urgency and any(x in text for x in ["urgent", "immediate"]):
-            score += 2
+            if urgency and any(x in text for x in ["urgent", "immediate"]):
+                score += 2
 
-        # Email priority
         if r["has_email"]:
             score += 2
 
         r["score"] = score
 
-    # sort by score
     results.sort(key=lambda x: -x["score"])
 
     # ==============================
@@ -228,3 +233,9 @@ if run_search or refresh:
                         st.caption("No Email")
 
                     st.markdown(f"[🔗 Open Post]({r['link']})")
+
+# ==============================
+# 📊 FOOTER
+# ==============================
+st.markdown("---")
+st.caption(f"👀 Visits: {data['visits']} | 🔍 Searches: {data['searches']}")
