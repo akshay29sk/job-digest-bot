@@ -2,7 +2,6 @@ import streamlit as st
 import subprocess
 import os
 import json
-from datetime import datetime
 
 # 🔐 Load secrets into env
 for key, value in st.secrets.items():
@@ -11,7 +10,7 @@ for key, value in st.secrets.items():
 st.set_page_config(page_title="LinkedIn Hiring Finder", layout="wide")
 
 # ==============================
-# 📊 SIMPLE ANALYTICS (FILE BASED)
+# 📊 SIMPLE ANALYTICS
 # ==============================
 DATA_FILE = "analytics.json"
 
@@ -37,19 +36,17 @@ st.title("🔥 LinkedIn Hiring Finder")
 st.markdown("""
 ### 🚀 What this app does
 - Finds latest LinkedIn hiring posts
-- Extracts recruiter emails (if available)
-- Filters based on role & hiring intent
-- Helps you apply faster than others
+- Extracts recruiter emails
+- Helps you apply faster
 
-### 💡 Tips to use
-1. Prefer **email posts** → faster response
-2. Apply within **1–2 hours**
-3. Customize query for niche roles
-4. Try different combinations daily
+### 💡 Tips
+- Prefer email posts
+- Apply within 1–2 hours
+- Try multiple queries
 """)
 
 # ==============================
-# 🎯 PREDEFINED OPTIONS
+# 🎯 PREDEFINED INPUTS
 # ==============================
 PREDEFINED_SEARCH = {
     "Business Analyst": "hiring business analyst",
@@ -74,12 +71,8 @@ with col2:
     role_type = st.selectbox("Role Type", list(PREDEFINED_ROLES.keys()))
     roles = st.text_input("Role Keywords", PREDEFINED_ROLES[role_type])
 
-# ==============================
-# ⚙️ SETTINGS
-# ==============================
 mode = st.selectbox("Email Mode", ["prefer_email", "only_email", "both", "no_email"])
 
-# FIXED RESULT LIMIT
 RESULT_LIMIT = 20
 
 # ==============================
@@ -98,9 +91,19 @@ if st.button("🚀 Run Search"):
         os.environ["RESULT_LIMIT"] = str(RESULT_LIMIT)
         os.environ["LOCATION_KEYWORDS"] = "global"
 
-        output = subprocess.getoutput("python3 main.py")
+        # 🔥 SAFE EXECUTION (no silent failure)
+        result = subprocess.run(
+            ["python3", "main.py"],
+            capture_output=True,
+            text=True
+        )
+
+        output = result.stdout + result.stderr
 
     st.success("Done!")
+
+    # 🔍 DEBUG VIEW (IMPORTANT)
+    st.text_area("RAW OUTPUT", output, height=250)
 
     # ==============================
     # 📊 PARSE OUTPUT
@@ -121,12 +124,12 @@ if st.button("🚀 Run Search"):
                 email, link = None, None
 
     # ==============================
-    # 📦 DISPLAY RESULTS
+    # 📦 DISPLAY
     # ==============================
     st.subheader(f"Results ({len(results)})")
 
     if not results:
-        st.warning("No results found")
+        st.warning("No results found → check RAW OUTPUT above")
     else:
         for i, (email, link) in enumerate(results, 1):
             with st.container():
@@ -146,7 +149,7 @@ if st.button("🚀 Run Search"):
                 st.divider()
 
 # ==============================
-# 📊 FOOTER ANALYTICS
+# 📊 FOOTER
 # ==============================
 st.markdown("---")
 st.caption(f"👀 Visits: {data['visits']} | 🔍 Searches: {data['searches']}")
