@@ -1,6 +1,6 @@
 # =====================================
 # LinkedIn Hiring Radar
-# Version: v0.2.9
+# Version: v0.2.9.1
 # File: main.py
 # =====================================
 
@@ -116,6 +116,17 @@ def process(posts):
         "email your resume", "position", "vacancy"
     ]
 
+    # 🔥 NEW: noise filter (SAFE ADDITION)
+    bad_patterns = [
+        "hot take",
+        "lessons",
+        "most people think",
+        "my thoughts",
+        "opinion",
+        "insight",
+        "story",
+    ]
+
     for p in posts:
         text = p.get("content") or ""
         link = p.get("linkedinUrl")
@@ -124,11 +135,14 @@ def process(posts):
             continue
         seen.add(link)
 
-        # Clean text
         clean = re.sub(r"#\w+", "", text.lower())
 
+        # 🔥 NEW: remove non-job content
+        if any(bp in clean for bp in bad_patterns):
+            continue
+
         # ==============================
-        # INTENT LOGIC
+        # INTENT
         # ==============================
         intent_match = any(k in clean for k in intent_keywords)
         fallback_intent = any(x in clean for x in ["hiring", "job", "opening"])
@@ -139,6 +153,10 @@ def process(posts):
         # ROLE MATCH
         # ==============================
         role_match = any(f" {r} " in f" {clean} " for r in roles)
+
+        # 🔥 NEW: ensure relevance
+        if not role_match and not intent_match:
+            continue
 
         # ==============================
         # EMAIL
@@ -156,17 +174,14 @@ def process(posts):
         emb = model.encode(text[:400])
         sim = util.cos_sim(query_emb, emb).item()
 
-        # Relaxed filter
         if sim < 0.08 and not allow_fallback:
             continue
 
         score = sim + (0.3 if has_email else 0)
 
-        # Boost strong hiring signals
         if "apply" in clean or "send your resume" in clean:
             score += 0.2
 
-        # Final safety filter
         if not intent_match and sim < 0.15:
             continue
 
@@ -195,6 +210,6 @@ if __name__ == "__main__":
     try:
         posts = fetch_posts()
         results = process(posts)
-        print(json.dumps(results))   # ONLY JSON OUTPUT
+        print(json.dumps(results))
     except:
         print(json.dumps([]))
