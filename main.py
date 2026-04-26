@@ -1,6 +1,6 @@
 # =====================================
 # LinkedIn Hiring Radar
-# Version: v0.1.7
+# Version: v0.1.8
 # File: main.py
 # =====================================
 
@@ -44,7 +44,6 @@ POSTED_LIMIT = get_env("POSTED_LIMIT", "24h")
 MAX_POSTS = int(get_env("MAX_POSTS", "50"))
 RESULT_LIMIT = int(get_env("RESULT_LIMIT", "20"))
 EMAIL_MODE = get_env("EMAIL_MODE", "prefer_email").lower()
-LOCATION_KEYWORDS = get_env("LOCATION_KEYWORDS", "global")
 
 ACTOR_ID = "harvestapi~linkedin-post-search"
 
@@ -104,13 +103,17 @@ def fetch_posts():
     return all_posts
 
 # ==============================
-# PROCESS POSTS
+# PROCESS POSTS (ROLE-AWARE)
 # ==============================
 def process_posts(posts):
     results = []
     seen = set()
 
     query_embedding = model.encode(SEARCH_QUERY)
+
+    # 🔥 Extract role keywords
+    clean_query = SEARCH_QUERY.lower().replace("hiring", "").strip()
+    role_words = clean_query.split()
 
     for post in posts:
         text = (post.get("content") or "")
@@ -122,9 +125,14 @@ def process_posts(posts):
 
         seen.add(link)
 
-        # Intent filter (relaxed)
+        # Intent filter
         if not any(x in lower_text for x in ["hiring", "job", "role", "opening", "apply"]):
             continue
+
+        # 🔥 ROLE FILTER (MAIN FIX)
+        if role_words:
+            if not any(word in lower_text for word in role_words):
+                continue
 
         # Email extraction
         emails = re.findall(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+", text)
@@ -202,5 +210,4 @@ if __name__ == "__main__":
     results = process_posts(posts)
 
     send(results)
-
     print(json.dumps(results))
