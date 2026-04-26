@@ -23,11 +23,12 @@ LOCATION_KEYWORDS = get_env("LOCATION_KEYWORDS", required=False, default="global
 POSTED_LIMIT = get_env("POSTED_LIMIT")
 MAX_POSTS = int(get_env("MAX_POSTS"))
 RESULT_LIMIT = int(get_env("RESULT_LIMIT", required=False, default="10"))
+EMAIL_MODE = get_env("EMAIL_MODE", required=False, default="prefer_email").lower()
 
 ACTOR_ID = "harvestapi~linkedin-post-search"
 
 
-# 🚀 FETCH POSTS
+# 🚀 FETCH
 def fetch_posts():
     queries = [q.strip() for q in SEARCH_QUERY.split(",") if q.strip()]
     print("🔎 Queries:", queries)
@@ -71,7 +72,7 @@ def fetch_posts():
     return posts
 
 
-# 🎯 FILTER POSTS
+# 🎯 FILTER
 def filter_posts(posts):
     results = []
     seen = set()
@@ -90,33 +91,35 @@ def filter_posts(posts):
         if not text or not link:
             continue
 
-        # ❌ remove spam
+        # ❌ spam filter
         if any(x in combined for x in [
-            "freshers",
-            "comment interested",
-            "like and share",
-            "tag someone",
-            "walk-in",
-            "bulk hiring",
-            "refer someone"
+            "freshers", "comment interested", "like and share",
+            "tag someone", "walk-in", "bulk hiring", "refer someone"
         ]):
             continue
 
-        # 🎯 role filter
+        # 🎯 role
         if not any(x in combined for x in role_words):
             continue
 
-        # 🔥 hiring filter
+        # 🔥 hiring
         if not any(x in combined for x in hiring_words):
             continue
 
-        # 🌍 location filter (optional)
+        # 🌍 location
         if LOCATION_KEYWORDS.lower() != "global":
             if not any(x in combined for x in location_words):
                 continue
 
         emails = re.findall(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+", text)
-        email = emails[0] if emails else "Not found"
+        has_email = len(emails) > 0
+        email = emails[0] if has_email else "Not found"
+
+        # 🎯 EMAIL MODE
+        if EMAIL_MODE == "only_email" and not has_email:
+            continue
+        if EMAIL_MODE == "no_email" and has_email:
+            continue
 
         if link in seen:
             continue
@@ -125,35 +128,31 @@ def filter_posts(posts):
 
         results.append({
             "email": email,
-            "link": link
+            "link": link,
+            "has_email": has_email
         })
 
-    print("✅ After filtering:", len(results))
+    print(f"✅ After filtering: {len(results)} (mode={EMAIL_MODE})")
 
-    # ⭐ prioritize email posts
-    results.sort(key=lambda x: x["email"] == "Not found")
+    if EMAIL_MODE == "prefer_email":
+        results.sort(key=lambda x: not x["has_email"])
 
     return results[:RESULT_LIMIT]
 
 
-# 📩 TELEGRAM SEND (CHUNKED)
+# 📩 TELEGRAM (CHUNKED)
 def send(msg):
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
 
-    # split into chunks (safe limit)
     chunks = [msg[i:i+3500] for i in range(0, len(msg), 3500)]
 
     for chunk in chunks:
-        payload = {
-            "chat_id": CHAT_ID,
-            "text": chunk
-        }
-
+        payload = {"chat_id": CHAT_ID, "text": chunk}
         res = requests.post(url, data=payload)
-        print("📩 Telegram response:", res.text)
+        print("📩 Telegram:", res.text)
 
 
-# 🧾 BUILD MESSAGE
+# 🧾 MESSAGE
 def build_message(results):
     if not results:
         return f"📭 No results today\n\n🔎 Query: {SEARCH_QUERY}"
