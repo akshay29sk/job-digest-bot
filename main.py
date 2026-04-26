@@ -1,6 +1,6 @@
 # =====================================
 # LinkedIn Hiring Radar
-# Version: v0.1.2
+# Version: v0.1.4
 # File: main.py
 # =====================================
 
@@ -9,11 +9,29 @@ import os
 import re
 import time
 import json
+from functools import lru_cache
 from sentence_transformers import SentenceTransformer, util
+from huggingface_hub import login
 
-# Load model once
-model = SentenceTransformer('all-MiniLM-L6-v2')
+# ==============================
+# 🔐 HF LOGIN (if token exists)
+# ==============================
+hf_token = os.getenv("HF_TOKEN")
+if hf_token:
+    login(token=hf_token)
 
+# ==============================
+# 🧠 MODEL CACHE (IMPORTANT)
+# ==============================
+@lru_cache(maxsize=1)
+def get_model():
+    return SentenceTransformer('all-MiniLM-L6-v2')
+
+model = get_model()
+
+# ==============================
+# ENV
+# ==============================
 def get_env(name, default=None):
     val = os.getenv(name)
     return val if val else default
@@ -85,7 +103,7 @@ def fetch_posts():
     return all_posts
 
 # ==============================
-# PROCESS (SEMANTIC)
+# PROCESS
 # ==============================
 def process_posts(posts):
     results = []
@@ -139,7 +157,6 @@ def process_posts(posts):
 
         final_score = (semantic_score * 5) + rule_score
 
-        # Threshold
         if semantic_score < 0.3:
             continue
 
@@ -185,5 +202,4 @@ if __name__ == "__main__":
 
     send(results)
 
-    # ONLY JSON OUTPUT
     print(json.dumps(results))
