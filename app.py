@@ -1,6 +1,6 @@
-# =====================================
+# # =====================================
 # LinkedIn Hiring Radar
-# Version: v0.1.5.1
+# Version: v0.1.5.2
 # File: app.py
 # =====================================
 
@@ -10,14 +10,16 @@ import os
 import sys
 import json
 
-# Load secrets
+# ==============================
+# 🔐 Load secrets
+# ==============================
 for key, value in st.secrets.items():
     os.environ[key] = value
 
 st.set_page_config(page_title="LinkedIn Hiring Radar", layout="wide")
 
 # ==============================
-# ANALYTICS
+# 📊 ANALYTICS
 # ==============================
 DATA_FILE = "analytics.json"
 
@@ -34,12 +36,12 @@ data["visits"] += 1
 save_data(data)
 
 # ==============================
-# HEADER
+# 🔥 HEADER
 # ==============================
 st.title("🔥 LinkedIn Hiring Radar")
 
 # ==============================
-# INPUTS
+# 🎯 INPUTS
 # ==============================
 search = st.text_input("🔎 Search Query", "hiring customer success manager")
 
@@ -51,13 +53,13 @@ posted_limit = st.selectbox(
     index=2
 )
 
-# Location
+# 📍 Location
 location_options = ["india", "pune", "mumbai", "bangalore", "hyderabad", "remote"]
 selected_locations = st.multiselect("📍 Location", location_options)
 location_str = ", ".join(selected_locations) if selected_locations else "global"
 
 # ==============================
-# ADVANCED FILTERS
+# ⚙️ ADVANCED FILTERS
 # ==============================
 use_filters = st.toggle("⚙️ Enable Advanced Filters")
 
@@ -82,7 +84,7 @@ if use_filters:
     result_limit = st.selectbox("📊 Results Count", [10, 20, 50], index=1)
 
 # ==============================
-# SETTINGS
+# ⚙️ SETTINGS
 # ==============================
 mode = st.selectbox(
     "📧 Email Mode",
@@ -90,13 +92,13 @@ mode = st.selectbox(
 )
 
 # ==============================
-# CACHE
+# 🧠 CACHE
 # ==============================
 cache_key = f"{search}_{location_str}_{posted_limit}_{mode}".replace(" ", "_")
 CACHE_FILE = f"cache_{cache_key}.json"
 
 # ==============================
-# BUTTONS
+# 🚀 BUTTONS
 # ==============================
 col1, col2 = st.columns(2)
 
@@ -104,7 +106,7 @@ run_btn = col1.button("🚀 Run Search (Cached)")
 refresh_btn = col2.button("🔄 Refresh (API Call)")
 
 # ==============================
-# BACKEND
+# 🧠 BACKEND
 # ==============================
 def run_backend():
     os.environ["SEARCH_QUERY"] = search
@@ -123,7 +125,7 @@ def run_backend():
     return result
 
 # ==============================
-# EXECUTION
+# 🚀 EXECUTION
 # ==============================
 if run_btn or refresh_btn:
 
@@ -137,6 +139,9 @@ if run_btn or refresh_btn:
     results = []
     result = None
 
+    # ==============================
+    # CACHE LOGIC
+    # ==============================
     if run_btn and os.path.exists(CACHE_FILE):
         results = json.load(open(CACHE_FILE))
         st.success("⚡ Loaded from cache")
@@ -145,10 +150,16 @@ if run_btn or refresh_btn:
         with st.spinner("Fetching jobs..."):
             result = run_backend()
 
+        # ==============================
+        # 🧪 DEBUG PANEL
+        # ==============================
         with st.expander("🧪 Debug Info", expanded=False):
-            if result.stderr:
-                st.error("Backend Error")
+
+            if result.returncode != 0:
+                st.error("❌ Backend Error")
                 st.text(result.stderr)
+            else:
+                st.info("✅ Backend executed successfully")
 
             if result.stdout:
                 st.text("Raw Output:")
@@ -156,6 +167,9 @@ if run_btn or refresh_btn:
             else:
                 st.warning("No output received")
 
+        # ==============================
+        # PARSE
+        # ==============================
         try:
             results = json.loads(result.stdout) if result.stdout else []
         except:
@@ -166,7 +180,7 @@ if run_btn or refresh_btn:
         st.success("✅ Fresh data fetched")
 
     # ==============================
-    # BEST LEADS
+    # ⭐ BEST LEADS
     # ==============================
     best = [r for r in results if r.get("email") != "Not found"][:5]
 
@@ -177,7 +191,7 @@ if run_btn or refresh_btn:
             st.markdown(f"[🔗 Open Post]({r['link']})")
 
     # ==============================
-    # RESULTS
+    # 🎯 RESULTS
     # ==============================
     st.markdown("## 🎯 Results")
 
@@ -187,18 +201,20 @@ if run_btn or refresh_btn:
         for r in results:
             st.markdown("---")
 
-            st.caption(f"⭐ {r.get('score')} | 🧠 {r.get('semantic_score')}")
+            st.caption(f"⭐ Score: {r.get('score')} | 🧠 Semantic: {r.get('semantic_score')}")
 
             if r.get("email") != "Not found":
                 st.success(r["email"])
             else:
                 st.caption("No Email")
 
-            st.write(r.get("content", "")[:400])
+            if r.get("content"):
+                st.write(r["content"][:400])
+
             st.markdown(f"[🔗 Open Post]({r.get('link')})")
 
 # ==============================
-# FOOTER
+# 📊 FOOTER
 # ==============================
 st.markdown("---")
 st.caption(f"👀 Visits: {data['visits']} | 🔍 Searches: {data['searches']}")
