@@ -11,7 +11,13 @@ import json
 
 import os
 
+import os
+
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+
+if not TOKEN:
+    raise Exception("❌ TELEGRAM_BOT_TOKEN not set")
+
 BASE_URL = f"https://api.telegram.org/bot{TOKEN}"
 
 last_update_id = None
