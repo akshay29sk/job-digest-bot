@@ -1,166 +1,312 @@
 # 🔥 LinkedIn Hiring Radar
 
-> Find high-intent hiring posts (with recruiter emails) faster than LinkedIn feed 🚀
+A smart job discovery tool that fetches hiring posts from LinkedIn, ranks them using semantic similarity, and presents high-quality leads in a clean UI.
 
 ---
 
-## 🚀 Version 0.1.0
+## 🚀 What This App Does
 
-### 🎯 What is this?
-
-LinkedIn Hiring Radar is a lightweight tool that helps job seekers discover real hiring posts on LinkedIn—especially those where recruiters are actively asking for resumes or sharing emails.
-
-Instead of scrolling endlessly, this tool surfaces actionable opportunities.
-
----
-
-## ✨ Features
-
-### 🔍 Smart Search
-- Multi-query expansion (e.g., hiring → looking for → job opening)
-- Better coverage than single keyword search
-
-### 🧠 Intelligent Filtering
-- Filters only actual hiring posts
-- Removes noise (generic or non-hiring content)
-- Supports:
-  - Role keywords
-  - Location filters
-  - Posted time (1h / 24h / week / month)
-
-### 📧 Email Extraction
-- Automatically extracts recruiter emails from posts
-- Modes:
-  - prefer_email
-  - only_email
-  - both
-  - no_email
-
-### ⭐ Ranking System
-Prioritizes:
-- Posts with emails
-- Urgent hiring signals
-- “Apply / Send CV” intent
-
-### 🖥 UI (Streamlit)
-- Clean and simple interface
-- Shows:
-  - Email
-  - Post preview
-  - Direct LinkedIn link
-  - Score (ranking)
-
-### ⚡ Cache + Refresh
-- Cached runs → fast & free
-- Refresh → fetch latest data (API call)
-
-### 📩 Telegram Alerts
-- Sends top hiring leads directly to Telegram
-
-### 📊 Analytics
-- Tracks:
-  - Visits
-  - Searches
+- 🔎 Searches LinkedIn posts for hiring-related content
+- 🧠 Uses AI (Sentence Transformers) to rank relevance
+- 📧 Extracts recruiter emails when available
+- 🎯 Filters noise (non-hiring posts)
+- 📊 Scores and ranks results
+- ⚡ Provides cached + fresh search modes
+- 🧾 Tracks search history and performance
 
 ---
 
-## 🏗 Architecture
+## 🧱 Architecture Overview
 
-text Streamlit UI    ↓ Environment Variables    ↓ main.py (Core Engine)    ↓ Apify LinkedIn Scraper    ↓ Filtering + Scoring    ↓ JSON Output    ↓ UI + Telegram Alerts 
-
----
-
-## ⚙️ Setup
-
-### 1. Clone repo
-
-bash git clone https://github.com/your-username/job-digest-bot.git cd job-digest-bot 
+Streamlit UI (app.py)         ↓ Backend Execution (main.py)         ↓ Apify LinkedIn Scraper API         ↓ Processing + Scoring (AI Model)         ↓ Results → UI + Cache + Logs
 
 ---
 
-### 2. Install dependencies
+## 📁 Project Structure
 
-bash pip install -r requirements.txt 
-
----
-
-### 3. Add environment variables
-
-Create .env or use Streamlit secrets:
-
-env APIFY_TOKEN=your_apify_token TELEGRAM_TOKEN=your_telegram_bot_token CHAT_ID=your_chat_id 
+├── app.py              # Streamlit frontend (UI + controls) ├── main.py             # Backend logic (fetch + process) ├── analytics.json      # Tracks visits & searches ├── search_logs.json    # Stores search metadata ├── cache_*.json        # Cached search results └── README.md           # Documentation
 
 ---
 
-### 4. Run app
+## ⚙️ Environment Variables / Secrets
 
-bash streamlit run app.py 
+Set these in Streamlit Secrets or environment:
 
----
-
-## 🧪 Example Usage
-
-text Search: hiring customer success Location: india, remote Posted: 24h Mode: prefer_email 
-
-👉 Output:
-- Top hiring posts
-- Recruiter emails
-- Direct apply links
+APIFY_TOKEN=your_apify_token TELEGRAM_BOT_TOKEN=your_bot_token   # (optional, currently unused in UI)
 
 ---
 
-## ⚠️ Limitations (v0.1.0)
+## 🧠 Core Logic Explained
 
-- Advanced filters are UI-only (not applied in backend yet)
-- Analytics stored locally (may reset on cloud)
-- No company/recruiter extraction yet
-- No authentication / multi-user support
+### 1. Query Generation
 
----
+From input role (e.g. product owner), app generates:
 
-## 🎯 Who is this for?
-
-- Job seekers who want direct recruiter access
-- People tired of LinkedIn noise
-- Anyone optimizing for speed + relevance
+hiring product owner product owner job product owner opening looking for product owner
 
 ---
 
-## 🧠 Philosophy
+### 2. Data Fetching (Apify)
 
-> Speed + Relevance > Volume
+Uses:
 
-Focus:
-- Real hiring intent
-- Actionable leads
-- Minimal noise
+Actor: harvestapi~linkedin-post-search
 
----
-
-## 🔮 Roadmap (v0.2.0)
-
-- AI-based ranking
-- Recruiter & company extraction
-- Query insights (which search matched)
-- Persistent analytics (DB)
-- Saved searches & alerts
+Fetches:
+- Post content
+- LinkedIn URL
+- Metadata
 
 ---
 
-## 🏷 Version
+### 3. Filtering Logic
 
-text v0.1.0 — Stable MVP 
+#### ✅ Allowed (Hiring intent)
+
+- "we are hiring"
+- "looking for"
+- "job opening"
+- "apply now"
+- "send resume"
+
+#### ❌ Removed (Noise)
+
+- "hot take"
+- "lessons"
+- "opinion"
+- "story"
+- generic BA/PM advice posts
 
 ---
 
-## 🙌 Contributing
+### 4. AI Scoring
 
-Feel free to fork, improve, and suggest features.
+Uses:
+
+SentenceTransformer("all-MiniLM-L6-v2")
+
+For each post:
+
+similarity = cosine(query, post)
 
 ---
 
-## ⭐ If you like this
+### 5. Final Score Calculation
 
-Give it a star ⭐ — helps visibility!
+score = semantic_similarity       + 0.3 (if email found)       + 0.2 (if "apply" present)
 
---
+---
+
+### 6. Result Buckets
+
+- Primary → Strong hiring intent
+- Fallback → Weak intent but still useful
+
+---
+
+## 🎯 UI Features
+
+### 🔍 Inputs
+
+- Role (search query)
+- Posted time filter
+- Location filter
+- Email mode
+- Max results
+
+---
+
+### ⚡ Actions
+
+| Button | Action |
+|------|--------|
+| Run Search | Uses cached results |
+| Refresh | Fetches fresh data |
+
+---
+
+### 📊 Output
+
+Each result shows:
+
+Index Score ⭐ Semantic 🧠 Match Level (High / Good / Low) Email (if available) Content preview Link to post
+
+---
+
+## 💾 Caching System
+
+- Cache key based on:
+    role + location + posted + mode + limit  
+- Stored as:
+    cache_<key>.json  
+- Reduces API calls and improves speed
+
+---
+
+## 🧾 Search Logging
+
+Each search is logged:
+
+json {   "search_id": "abc123",   "query": "product owner",   "results_count": 18,   "time_taken": 4.2,   "timestamp": "2026-04-27" } 
+
+---
+
+## 📊 Analytics
+
+Tracks:
+
+- Total visits
+- Total searches
+
+Stored in:
+
+analytics.json
+
+---
+
+## 🔄 Execution Flow
+
+User clicks search → Backend runs (main.py) → Fetch posts from Apify → Filter + score → Store in session + cache → Render results
+
+---
+
+## 🧠 Key Design Decisions
+
+### 1. Session State (Important)
+
+Streamlit reruns entire script on every interaction.
+
+Fix:
+st.session_state["results"]
+
+Prevents results from disappearing on button clicks.
+
+---
+
+### 2. Strict Hiring Filter
+
+Avoids spam like:
+
+- motivational posts
+- educational content
+- opinion threads
+
+---
+
+### 3. Semantic Threshold
+
+Minimum similarity = 0.05
+
+Ensures relevance without losing good results.
+
+---
+
+## ⚠️ Known Limitations
+
+### LinkedIn Data
+
+- Depends on Apify scraping
+- Limited by API quotas
+- Not real-time
+
+---
+
+### AI Model
+
+- Lightweight model (fast but not perfect)
+- May include borderline posts
+
+---
+
+### Telegram (Currently Disabled in UI)
+
+Telegram integration works but is hidden due to:
+
+- Chat ID complexity
+- Bot permission issues
+- UX clarity
+
+---
+
+## 📡 Telegram (Future Use)
+
+### Requirements
+
+- Bot created via BotFather
+- Privacy mode disabled
+- Group converted to supergroup
+- Chat ID format:
+
+-100XXXXXXXXXX
+
+---
+
+### Why it was hidden
+
+To avoid:
+
+❌ user confusion ❌ setup failures ❌ inconsistent delivery
+
+---
+
+## 🧪 Debugging
+
+Use built-in debug panel:
+
+STDOUT → backend output STDERR → logs/errors
+
+---
+
+## 🚀 Performance
+
+Typical:
+
+Fetch time: 3–8 seconds Results: 10–50 posts
+
+---
+
+## 📌 Future Improvements
+
+- ✅ Send only HIGH MATCH jobs
+- ✅ Deduplicate Telegram messages
+- ⏳ Auto-scheduled job alerts
+- ⏳ Save user preferences
+- ⏳ Export results (CSV)
+- ⏳ Multi-role search
+
+---
+
+## 👨‍💻 Tech Stack
+
+- Python
+- Streamlit
+- Sentence Transformers
+- Apify API
+- Requests
+
+---
+
+## 🎯 Summary
+
+This app acts as a:
+
+AI-powered LinkedIn job radar
+
+Helping you:
+
+- Cut through noise
+- Find real hiring posts
+- Reach recruiters faster
+
+---
+
+## 💡 Final Note
+
+The system is now:
+
+✔ Stable ✔ Accurate ✔ Scalable ✔ Ready for enhancements
+
+---
+
+Author: Akshay  
+Version: v1.2.x Stable Bu
