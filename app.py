@@ -1,7 +1,7 @@
 # =====================================
 # LinkedIn Hiring Radar
-# Version: v1.2.2-ui-clean
-# Status: CLEAN UI (NO TELEGRAM)
+# Version: v1.2.3-ui-hardened
+# Status: PRODUCTION READY (SAFE + CLEAN)
 # =====================================
 
 import streamlit as st
@@ -11,6 +11,7 @@ import sys
 import json
 import time
 import uuid
+import hashlib
 
 # ==============================
 # LOAD SECRETS
@@ -20,7 +21,9 @@ for k, v in st.secrets.items():
 
 st.set_page_config(page_title="LinkedIn Hiring Radar", layout="wide")
 
-# ✅ SESSION INIT
+# ==============================
+# SESSION INIT
+# ==============================
 if "results" not in st.session_state:
     st.session_state["results"] = []
 
@@ -30,11 +33,19 @@ if "results" not in st.session_state:
 DATA_FILE = "analytics.json"
 
 if not os.path.exists(DATA_FILE):
-    json.dump({"visits": 0, "searches": 0}, open(DATA_FILE, "w"))
+    with open(DATA_FILE, "w") as f:
+        json.dump({"visits": 0, "searches": 0}, f)
 
-data = json.load(open(DATA_FILE))
+try:
+    with open(DATA_FILE) as f:
+        data = json.load(f)
+except:
+    data = {"visits": 0, "searches": 0}
+
 data["visits"] += 1
-json.dump(data, open(DATA_FILE, "w"))
+
+with open(DATA_FILE, "w") as f:
+    json.dump(data, f)
 
 # ==============================
 # HEADER
@@ -71,9 +82,10 @@ limit = st.selectbox(
 )
 
 # ==============================
-# CACHE
+# CACHE (SAFE KEY)
 # ==============================
-cache_key = f"{search}_{location_str}_{posted}_{mode}_{limit}".replace(" ", "_")
+raw_key = f"{search}_{location_str}_{posted}_{mode}_{limit}"
+cache_key = hashlib.md5(raw_key.encode()).hexdigest()
 CACHE_FILE = f"cache_{cache_key}.json"
 
 # ==============================
@@ -88,21 +100,26 @@ refresh_btn = col2.button("🔄 Refresh (API Call)")
 # BACKEND
 # ==============================
 def run_backend():
-    return subprocess.run(
-        [
-            sys.executable,
-            "main.py",
-            search,
-            posted,
-            mode,
-            str(limit),
-            location_str,
-            "",  # no telegram
-            "",
-        ],
-        capture_output=True,
-        text=True
-    )
+    try:
+        return subprocess.run(
+            [
+                sys.executable,
+                "main.py",
+                search,
+                posted,
+                mode,
+                str(limit),
+                location_str,
+                "",
+                "",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=60
+        )
+    except subprocess.TimeoutExpired:
+        st.error("⏳ Backend timeout. Please try again.")
+        return None
 
 # ==============================
 # EXECUTION
@@ -116,39 +133,60 @@ if trigger:
         st.stop()
 
     data["searches"] += 1
-    json.dump(data, open(DATA_FILE, "w"))
+    with open(DATA_FILE, "w") as f:
+        json.dump(data, f)
 
     start_time = time.time()
     search_id = str(uuid.uuid4())[:8]
 
-    # CACHE
+    # ==============================
+    # CACHE LOAD
+    # ==============================
     if run_btn and os.path.exists(CACHE_FILE):
         st.info("⚡ Loading cached results...")
-        results = json.load(open(CACHE_FILE))
+
+        try:
+            with open(CACHE_FILE) as f:
+                results = json.load(f)
+        except:
+            results = []
+
         st.session_state["results"] = results
+
     else:
         with st.spinner("🚀 Fetching jobs from LinkedIn..."):
             result = run_backend()
 
+        if result is None:
+            st.stop()
+
+        if result.returncode != 0:
+            st.error("❌ Backend failed")
+            st.stop()
+
         with st.expander("🧪 Debug Info", expanded=False):
-            st.write("STDOUT:", result.stdout[:300])
-            st.write("STDERR:", result.stderr[:300])
+            st.code(result.stdout[:300])
+            st.code(result.stderr[:300])
 
         try:
             results = json.loads(result.stdout.strip()) if result.stdout.strip() else []
-            st.session_state["results"] = results
         except:
             st.error("❌ Parsing failed")
             results = []
 
+        st.session_state["results"] = results
+
         if results:
-            json.dump(results, open(CACHE_FILE, "w"))
+            with open(CACHE_FILE, "w") as f:
+                json.dump(results, f)
 
     duration = round(time.time() - start_time, 2)
 
     st.success(f"✅ Fetched {len(results)} results in {duration} sec | Search ID: {search_id}")
 
+    # ==============================
     # LOGGING
+    # ==============================
     LOG_FILE = "search_logs.json"
 
     log_entry = {
@@ -162,9 +200,16 @@ if trigger:
         "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
     }
 
-    logs = json.load(open(LOG_FILE)) if os.path.exists(LOG_FILE) else []
+    try:
+        with open(LOG_FILE) as f:
+            logs = json.load(f)
+    except:
+        logs = []
+
     logs.append(log_entry)
-    json.dump(logs, open(LOG_FILE, "w"))
+
+    with open(LOG_FILE, "w") as f:
+        json.dump(logs, f)
 
 # ==============================
 # ALWAYS SHOW RESULTS
@@ -174,8 +219,10 @@ results = st.session_state.get("results", [])
 st.markdown("## 🎯 Results")
 
 if not results:
-    st.warning("⚠️ No results found")
+    st.warning("⚠️ No results found. Try broader roles like 'product manager' or 'business analyst'")
 else:
+    st.caption(f"Showing top {len(results)} results")
+
     for i, r in enumerate(results, 1):
         st.markdown("---")
 
