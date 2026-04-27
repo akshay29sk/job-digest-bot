@@ -9,7 +9,9 @@ import subprocess
 import sys
 import json
 
-TOKEN = "YOUR_BOT_TOKEN"
+import os
+
+TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 BASE_URL = f"https://api.telegram.org/bot{TOKEN}"
 
 last_update_id = None
