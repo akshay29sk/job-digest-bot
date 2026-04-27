@@ -114,13 +114,29 @@ def run_backend():
     # 🔥 PASS TELEGRAM SECRETS
     env["TELEGRAM_BOT_TOKEN"] = st.secrets.get("TELEGRAM_BOT_TOKEN", "")
     env["TELEGRAM_CHAT_ID"] = st.secrets.get("TELEGRAM_CHAT_ID", "")
-
+def run_backend():
     return subprocess.run(
-        [sys.executable, "main.py"],
+        [
+            sys.executable,
+            "main.py",
+            search,
+            posted,
+            mode,
+            str(limit),
+            location_str,
+            st.secrets["TELEGRAM_BOT_TOKEN"],
+            st.secrets["TELEGRAM_CHAT_ID"],
+        ],
         capture_output=True,
-        text=True,
-        env=env  # 👈 CRITICAL LINE
+        text=True
     )
+   # return subprocess.run(
+    #    [sys.executable, "main.py"],
+      #  capture_output=True,
+      #  text=True,
+      #  env=env  # 👈 CRITICAL LINE
+   # )
+    #
 
 # ==============================
 # EXECUTION
