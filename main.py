@@ -17,11 +17,9 @@ model = get_model()
 
 APIFY_TOKEN = os.getenv("APIFY_TOKEN")
 
-import sys
-print("TOKEN:", os.getenv("TELEGRAM_BOT_TOKEN"), file=sys.stderr)
-print("CHAT_ID:", os.getenv("TELEGRAM_CHAT_ID"), file=sys.stderr)
 
 import sys
+print("TELEGRAM CONFIG: OK" if os.getenv("TELEGRAM_BOT_TOKEN") else "TELEGRAM CONFIG: MISSING", file=sys.stderr)
 
 args = sys.argv
 
