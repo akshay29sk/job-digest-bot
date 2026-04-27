@@ -40,8 +40,8 @@ ACTOR_ID = "harvestapi~linkedin-post-search"
 # TELEGRAM
 # ==============================
 def send_telegram(results):
-    token = TELEGRAM_BOT_TOKEN.strip()
-chat_id = TELEGRAM_CHAT_ID.strip()
+    token = (os.getenv("TELEGRAM_BOT_TOKEN") or "").strip()
+    chat_id = (os.getenv("TELEGRAM_CHAT_ID") or "").strip()
 
     if not token or not chat_id:
         print("TELEGRAM: Missing token or chat_id", file=sys.stderr)
@@ -72,7 +72,6 @@ chat_id = TELEGRAM_CHAT_ID.strip()
             time.sleep(0.3)
         except Exception as e:
             print("TELEGRAM ERROR:", str(e), file=sys.stderr)
-
 # ==============================
 # QUERY
 # ==============================
