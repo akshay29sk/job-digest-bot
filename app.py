@@ -1,7 +1,7 @@
 # =====================================
 # LinkedIn Hiring Radar
-# Version: v1.2.1-ui-telegram-fixed
-# Status: SESSION FIX + TELEGRAM WORKING
+# Version: v1.2.2-ui-clean
+# Status: CLEAN UI (NO TELEGRAM)
 # =====================================
 
 import streamlit as st
@@ -11,7 +11,6 @@ import sys
 import json
 import time
 import uuid
-import requests
 
 # ==============================
 # LOAD SECRETS
@@ -89,12 +88,6 @@ refresh_btn = col2.button("🔄 Refresh (API Call)")
 # BACKEND
 # ==============================
 def run_backend():
-    token = st.secrets.get("TELEGRAM_BOT_TOKEN")
-
-    if not token:
-        st.error("❌ Telegram bot token missing")
-        st.stop()
-
     return subprocess.run(
         [
             sys.executable,
@@ -104,7 +97,7 @@ def run_backend():
             mode,
             str(limit),
             location_str,
-            token,
+            "",  # no telegram
             "",
         ],
         capture_output=True,
@@ -132,7 +125,7 @@ if trigger:
     if run_btn and os.path.exists(CACHE_FILE):
         st.info("⚡ Loading cached results...")
         results = json.load(open(CACHE_FILE))
-        st.session_state["results"] = results  # ✅ STORE
+        st.session_state["results"] = results
     else:
         with st.spinner("🚀 Fetching jobs from LinkedIn..."):
             result = run_backend()
@@ -143,7 +136,7 @@ if trigger:
 
         try:
             results = json.loads(result.stdout.strip()) if result.stdout.strip() else []
-            st.session_state["results"] = results  # ✅ STORE
+            st.session_state["results"] = results
         except:
             st.error("❌ Parsing failed")
             results = []
@@ -174,7 +167,7 @@ if trigger:
     json.dump(logs, open(LOG_FILE, "w"))
 
 # ==============================
-# ALWAYS SHOW RESULTS (KEY FIX)
+# ALWAYS SHOW RESULTS
 # ==============================
 results = st.session_state.get("results", [])
 
@@ -205,44 +198,6 @@ else:
 
         st.write(r.get("content", "")[:300])
         st.markdown(f"[🔗 Open Post]({r.get('link')})")
-
-    # ==============================
-    # TELEGRAM (NOW WORKS)
-    # ==============================
-    st.markdown("## 📤 Send to Telegram")
-
-    st.info("👉 Get your chat ID from @userinfobot")
-
-    user_chat_id = st.text_input("📱 Telegram Chat ID")
-
-    if st.button("📨 Send to Telegram"):
-        if not user_chat_id.strip():
-            st.error("Please enter chat ID")
-        else:
-            token = st.secrets.get("TELEGRAM_BOT_TOKEN")
-            sent = 0
-
-            for r in results[:5]:
-                msg = f"""🔥 New Job Lead
-
-📧 {r['email']}
-⭐ Score: {r['score']}
-
-{r['content'][:200]}
-
-🔗 {r['link']}"""
-
-                try:
-                    requests.post(
-                        f"https://api.telegram.org/bot{token}/sendMessage",
-                        data={"chat_id": user_chat_id.strip(), "text": msg},
-                        timeout=10
-                    )
-                    sent += 1
-                except:
-                    pass
-
-            st.success(f"✅ Sent {sent} messages")
 
 # ==============================
 # FOOTER
