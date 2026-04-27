@@ -1,7 +1,7 @@
 # =====================================
 # LinkedIn Hiring Radar
-# Version: v1.2.0-ui-telegram-manual
-# Status: CLEAN UI + MANUAL TELEGRAM
+# Version: v1.2.1-ui-telegram-fixed
+# Status: SESSION FIX + TELEGRAM WORKING
 # =====================================
 
 import streamlit as st
@@ -20,6 +20,8 @@ for k, v in st.secrets.items():
     os.environ[k] = v
 
 st.set_page_config(page_title="LinkedIn Hiring Radar", layout="wide")
+
+# ✅ SESSION INIT
 if "results" not in st.session_state:
     st.session_state["results"] = []
 
@@ -51,7 +53,6 @@ posted = st.selectbox(
     index=2
 )
 
-# Location
 location_options = ["india", "pune", "mumbai", "bangalore", "hyderabad", "remote"]
 selected_locations = st.multiselect("📍 Location", location_options)
 location_str = ", ".join(selected_locations) if selected_locations else "global"
@@ -89,7 +90,6 @@ refresh_btn = col2.button("🔄 Refresh (API Call)")
 # ==============================
 def run_backend():
     token = st.secrets.get("TELEGRAM_BOT_TOKEN")
-    chat_id = st.secrets.get("TELEGRAM_CHAT_ID")
 
     if not token:
         st.error("❌ Telegram bot token missing")
@@ -105,7 +105,7 @@ def run_backend():
             str(limit),
             location_str,
             token,
-            "",  # no auto chat id
+            "",
         ],
         capture_output=True,
         text=True
@@ -132,6 +132,7 @@ if trigger:
     if run_btn and os.path.exists(CACHE_FILE):
         st.info("⚡ Loading cached results...")
         results = json.load(open(CACHE_FILE))
+        st.session_state["results"] = results  # ✅ STORE
     else:
         with st.spinner("🚀 Fetching jobs from LinkedIn..."):
             result = run_backend()
@@ -142,6 +143,7 @@ if trigger:
 
         try:
             results = json.loads(result.stdout.strip()) if result.stdout.strip() else []
+            st.session_state["results"] = results  # ✅ STORE
         except:
             st.error("❌ Parsing failed")
             results = []
@@ -149,17 +151,11 @@ if trigger:
         if results:
             json.dump(results, open(CACHE_FILE, "w"))
 
-    end_time = time.time()
-    duration = round(end_time - start_time, 2)
+    duration = round(time.time() - start_time, 2)
 
-    # ==============================
-    # SUMMARY
-    # ==============================
     st.success(f"✅ Fetched {len(results)} results in {duration} sec | Search ID: {search_id}")
 
-    # ==============================
     # LOGGING
-    # ==============================
     LOG_FILE = "search_logs.json"
 
     log_entry = {
@@ -173,65 +169,61 @@ if trigger:
         "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
     }
 
-    if os.path.exists(LOG_FILE):
-        logs = json.load(open(LOG_FILE))
-    else:
-        logs = []
-
+    logs = json.load(open(LOG_FILE)) if os.path.exists(LOG_FILE) else []
     logs.append(log_entry)
     json.dump(logs, open(LOG_FILE, "w"))
 
+# ==============================
+# ALWAYS SHOW RESULTS (KEY FIX)
+# ==============================
+results = st.session_state.get("results", [])
+
+st.markdown("## 🎯 Results")
+
+if not results:
+    st.warning("⚠️ No results found")
+else:
+    for i, r in enumerate(results, 1):
+        st.markdown("---")
+
+        score = r.get("score", 0)
+        semantic = r.get("semantic_score", 0)
+
+        if score > 0.7:
+            match = "🔥 High Match"
+        elif score > 0.5:
+            match = "👍 Good Match"
+        else:
+            match = "➖ Low Match"
+
+        st.markdown(f"**{i}. ⭐ {score} | 🧠 {semantic} | {match}**")
+
+        if r.get("email") != "Not found":
+            st.success(r["email"])
+        else:
+            st.caption("No Email")
+
+        st.write(r.get("content", "")[:300])
+        st.markdown(f"[🔗 Open Post]({r.get('link')})")
+
     # ==============================
-    # RESULTS
+    # TELEGRAM (NOW WORKS)
     # ==============================
-    st.markdown("## 🎯 Results")
+    st.markdown("## 📤 Send to Telegram")
 
-    if not results:
-        st.warning("⚠️ No results found")
-    else:
-        for i, r in enumerate(results, 1):
-            st.markdown("---")
+    st.info("👉 Get your chat ID from @userinfobot")
 
-            score = r.get("score", 0)
-            semantic = r.get("semantic_score", 0)
+    user_chat_id = st.text_input("📱 Telegram Chat ID")
 
-            if score > 0.7:
-                match = "🔥 High Match"
-            elif score > 0.5:
-                match = "👍 Good Match"
-            else:
-                match = "➖ Low Match"
+    if st.button("📨 Send to Telegram"):
+        if not user_chat_id.strip():
+            st.error("Please enter chat ID")
+        else:
+            token = st.secrets.get("TELEGRAM_BOT_TOKEN")
+            sent = 0
 
-            st.markdown(f"**{i}. ⭐ {score} | 🧠 {semantic} | {match}**")
-
-            if r.get("email") != "Not found":
-                st.success(r["email"])
-            else:
-                st.caption("No Email")
-
-            st.write(r.get("content", "")[:300])
-            st.markdown(f"[🔗 Open Post]({r.get('link')})")
-
-        # ==============================
-        # TELEGRAM (MANUAL)
-        # ==============================
-        st.markdown("## 📤 Send to Telegram")
-
-        st.info("👉 Get your chat ID from @userinfobot on Telegram")
-
-        user_chat_id = st.text_input("📱 Enter Telegram Chat ID")
-
-        if st.button("📨 Send to Telegram"):
-
-            if not user_chat_id.strip():
-                st.error("Please enter chat ID")
-            else:
-                token = st.secrets.get("TELEGRAM_BOT_TOKEN")
-
-                sent = 0
-
-                for r in results[:5]:
-                    msg = f"""🔥 New Job Lead
+            for r in results[:5]:
+                msg = f"""🔥 New Job Lead
 
 📧 {r['email']}
 ⭐ Score: {r['score']}
@@ -240,20 +232,17 @@ if trigger:
 
 🔗 {r['link']}"""
 
-                    try:
-                        requests.post(
-                            f"https://api.telegram.org/bot{token}/sendMessage",
-                            data={
-                                "chat_id": user_chat_id.strip(),
-                                "text": msg
-                            },
-                            timeout=10
-                        )
-                        sent += 1
-                    except:
-                        pass
+                try:
+                    requests.post(
+                        f"https://api.telegram.org/bot{token}/sendMessage",
+                        data={"chat_id": user_chat_id.strip(), "text": msg},
+                        timeout=10
+                    )
+                    sent += 1
+                except:
+                    pass
 
-                st.success(f"✅ Sent {sent} messages")
+            st.success(f"✅ Sent {sent} messages")
 
 # ==============================
 # FOOTER
