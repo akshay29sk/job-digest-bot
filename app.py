@@ -1,7 +1,7 @@
 # =====================================
 # LinkedIn Hiring Radar
-# Version: v1.1.1-ui-max-results
-# Status: CLEAN UI + MAX RESULTS CONTROL
+# Version: v1.2.0-ui-telegram-manual
+# Status: CLEAN UI + MANUAL TELEGRAM
 # =====================================
 
 import streamlit as st
@@ -11,6 +11,7 @@ import sys
 import json
 import time
 import uuid
+import requests
 
 # ==============================
 # LOAD SECRETS
@@ -61,7 +62,6 @@ mode = st.selectbox(
     ["prefer_email", "only_email", "both", "no_email"]
 )
 
-# 🔥 NEW: Max Results Control
 limit = st.selectbox(
     "📊 Max Results",
     [10, 20, 50, 100],
@@ -89,8 +89,8 @@ def run_backend():
     token = st.secrets.get("TELEGRAM_BOT_TOKEN")
     chat_id = st.secrets.get("TELEGRAM_CHAT_ID")
 
-    if not token or not chat_id:
-        st.error("❌ Telegram secrets missing")
+    if not token:
+        st.error("❌ Telegram bot token missing")
         st.stop()
 
     return subprocess.run(
@@ -103,7 +103,7 @@ def run_backend():
             str(limit),
             location_str,
             token,
-            chat_id,
+            "",  # no auto chat id
         ],
         capture_output=True,
         text=True
@@ -209,6 +209,49 @@ if trigger:
 
             st.write(r.get("content", "")[:300])
             st.markdown(f"[🔗 Open Post]({r.get('link')})")
+
+        # ==============================
+        # TELEGRAM (MANUAL)
+        # ==============================
+        st.markdown("## 📤 Send to Telegram")
+
+        st.info("👉 Get your chat ID from @userinfobot on Telegram")
+
+        user_chat_id = st.text_input("📱 Enter Telegram Chat ID")
+
+        if st.button("📨 Send to Telegram"):
+
+            if not user_chat_id.strip():
+                st.error("Please enter chat ID")
+            else:
+                token = st.secrets.get("TELEGRAM_BOT_TOKEN")
+
+                sent = 0
+
+                for r in results[:5]:
+                    msg = f"""🔥 New Job Lead
+
+📧 {r['email']}
+⭐ Score: {r['score']}
+
+{r['content'][:200]}
+
+🔗 {r['link']}"""
+
+                    try:
+                        requests.post(
+                            f"https://api.telegram.org/bot{token}/sendMessage",
+                            data={
+                                "chat_id": user_chat_id.strip(),
+                                "text": msg
+                            },
+                            timeout=10
+                        )
+                        sent += 1
+                    except:
+                        pass
+
+                st.success(f"✅ Sent {sent} messages")
 
 # ==============================
 # FOOTER
