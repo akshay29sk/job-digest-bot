@@ -17,7 +17,7 @@ for k, v in st.secrets.items():
     os.environ[k] = v
 
 st.set_page_config(page_title="LinkedIn Hiring Radar", layout="wide")
-st.write("SECRETS:", dict(st.secrets))
+
 
 # ==============================
 # ANALYTICS
