@@ -103,18 +103,13 @@ refresh_btn = col2.button("🔄 Refresh (API Call)")
 # BACKEND
 # ==============================
 def run_backend():
-    env = os.environ.copy()
+    token = st.secrets.get("TELEGRAM_BOT_TOKEN")
+    chat_id = st.secrets.get("TELEGRAM_CHAT_ID")
 
-    env["SEARCH_QUERY"] = search
-    env["POSTED_LIMIT"] = posted
-    env["EMAIL_MODE"] = mode
-    env["RESULT_LIMIT"] = str(limit)
-    env["LOCATION_KEYWORDS"] = location_str
+    if not token or not chat_id:
+        st.error("❌ Telegram secrets missing in Streamlit config")
+        st.stop()
 
-    # 🔥 PASS TELEGRAM SECRETS
-    env["TELEGRAM_BOT_TOKEN"] = st.secrets.get("TELEGRAM_BOT_TOKEN", "")
-    env["TELEGRAM_CHAT_ID"] = st.secrets.get("TELEGRAM_CHAT_ID", "")
-def run_backend():
     return subprocess.run(
         [
             sys.executable,
@@ -124,19 +119,12 @@ def run_backend():
             mode,
             str(limit),
             location_str,
-            st.secrets["TELEGRAM_BOT_TOKEN"],
-            st.secrets["TELEGRAM_CHAT_ID"],
+            token,
+            chat_id,
         ],
         capture_output=True,
         text=True
     )
-   # return subprocess.run(
-    #    [sys.executable, "main.py"],
-      #  capture_output=True,
-      #  text=True,
-      #  env=env  # 👈 CRITICAL LINE
-   # )
-    #
 
 # ==============================
 # EXECUTION
