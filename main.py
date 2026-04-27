@@ -17,6 +17,10 @@ model = get_model()
 SEARCH_QUERY = os.getenv("SEARCH_QUERY", "").strip()
 APIFY_TOKEN = os.getenv("APIFY_TOKEN")
 
+import sys
+print("TOKEN:", os.getenv("TELEGRAM_BOT_TOKEN"), file=sys.stderr)
+print("CHAT_ID:", os.getenv("TELEGRAM_CHAT_ID"), file=sys.stderr)
+
 POSTED_LIMIT = os.getenv("POSTED_LIMIT", "24h")
 RESULT_LIMIT = int(os.getenv("RESULT_LIMIT", "20"))
 EMAIL_MODE = os.getenv("EMAIL_MODE", "prefer_email").lower()
