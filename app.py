@@ -1,7 +1,7 @@
 # =====================================
 # LinkedIn Hiring Radar
-# Version: v1.1.0-ui-enhanced
-# Status: CLEAN UI + SEARCH TRACKING
+# Version: v1.1.1-ui-max-results
+# Status: CLEAN UI + MAX RESULTS CONTROL
 # =====================================
 
 import streamlit as st
@@ -61,7 +61,8 @@ mode = st.selectbox(
     ["prefer_email", "only_email", "both", "no_email"]
 )
 
- limit = st.selectbox(
+# 🔥 NEW: Max Results Control
+limit = st.selectbox(
     "📊 Max Results",
     [10, 20, 50, 100],
     index=1
@@ -199,19 +200,14 @@ if trigger:
             else:
                 match = "➖ Low Match"
 
-            # ✅ Single-line compact header
             st.markdown(f"**{i}. ⭐ {score} | 🧠 {semantic} | {match}**")
 
-            # Email
             if r.get("email") != "Not found":
                 st.success(r["email"])
             else:
                 st.caption("No Email")
 
-            # Content
             st.write(r.get("content", "")[:300])
-
-            # Link
             st.markdown(f"[🔗 Open Post]({r.get('link')})")
 
 # ==============================
