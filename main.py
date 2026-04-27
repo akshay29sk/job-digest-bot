@@ -1,7 +1,7 @@
 # =====================================
 # LinkedIn Hiring Radar
-# Version: v1.0.3-stable-final
-# Status: STABLE + TELEGRAM + CLEAN STDOUT
+# Version: v1.1.0-no-auto-telegram
+# Status: STABLE + UI CONTROLLED TELEGRAM
 # =====================================
 
 import requests, os, re, time, json, sys
@@ -14,12 +14,7 @@ def get_model():
 
 model = get_model()
 
-
 APIFY_TOKEN = os.getenv("APIFY_TOKEN")
-
-
-import sys
-print("TELEGRAM CONFIG: OK" if os.getenv("TELEGRAM_BOT_TOKEN") else "TELEGRAM CONFIG: MISSING", file=sys.stderr)
 
 args = sys.argv
 
@@ -29,23 +24,22 @@ EMAIL_MODE = args[3] if len(args) > 3 else "prefer_email"
 RESULT_LIMIT = int(args[4]) if len(args) > 4 else 20
 LOCATION_KEYWORDS = args[5] if len(args) > 5 else ""
 
+# 🔥 from app.py
 TELEGRAM_BOT_TOKEN = args[6] if len(args) > 6 else ""
 TELEGRAM_CHAT_ID = args[7] if len(args) > 7 else ""
 
 ACTOR_ID = "harvestapi~linkedin-post-search"
 
 # ==============================
-# TELEGRAM
+# TELEGRAM (CALL ONLY WHEN NEEDED)
 # ==============================
-def send_telegram(results):
-    token = (os.getenv("TELEGRAM_BOT_TOKEN") or "").strip()
-    chat_id = (os.getenv("TELEGRAM_CHAT_ID") or "").strip()
+def send_telegram(results, chat_id):
+    token = TELEGRAM_BOT_TOKEN.strip()
 
     if not token or not chat_id:
-        print("TELEGRAM: Missing token or chat_id", file=sys.stderr)
-        return
+        return {"status": "failed", "reason": "missing token/chat_id"}
 
-    print(f"TELEGRAM: Sending {min(len(results),5)} messages", file=sys.stderr)
+    sent = 0
 
     for r in results[:5]:
         if not r.get("link"):
@@ -61,15 +55,18 @@ def send_telegram(results):
 🔗 {r['link']}"""
 
         try:
-            res = requests.post(
+            requests.post(
                 f"https://api.telegram.org/bot{token}/sendMessage",
                 data={"chat_id": chat_id, "text": msg},
                 timeout=10
             )
-            print("TELEGRAM STATUS:", res.status_code, file=sys.stderr)
+            sent += 1
             time.sleep(0.3)
-        except Exception as e:
-            print("TELEGRAM ERROR:", str(e), file=sys.stderr)
+        except:
+            pass
+
+    return {"status": "success", "sent": sent}
+
 # ==============================
 # QUERY
 # ==============================
@@ -131,7 +128,7 @@ def fetch_posts():
     return all_posts
 
 # ==============================
-# PROCESS (UNCHANGED LOGIC)
+# PROCESS (UNCHANGED)
 # ==============================
 def process(posts):
     results = []
@@ -216,7 +213,6 @@ def process(posts):
         elif weak_match or has_email:
             fallback.append(obj)
 
-    # guaranteed fallback
     if results:
         final = results
     elif fallback:
@@ -248,12 +244,10 @@ if __name__ == "__main__":
         results = process(posts)
         print("DEBUG results:", len(results), file=sys.stderr)
 
-        if results:
-            send_telegram(results)
-        else:
-            print("TELEGRAM: No results to send", file=sys.stderr)
+        # ❌ REMOVED AUTO TELEGRAM
 
         print(json.dumps(results))  # ONLY JSON
+
     except Exception as e:
         print("ERROR:", str(e), file=sys.stderr)
         print(json.dumps([]))
