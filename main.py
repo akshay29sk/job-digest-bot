@@ -14,16 +14,25 @@ def get_model():
 
 model = get_model()
 
-SEARCH_QUERY = os.getenv("SEARCH_QUERY", "").strip()
+
 APIFY_TOKEN = os.getenv("APIFY_TOKEN")
 
 import sys
 print("TOKEN:", os.getenv("TELEGRAM_BOT_TOKEN"), file=sys.stderr)
 print("CHAT_ID:", os.getenv("TELEGRAM_CHAT_ID"), file=sys.stderr)
 
-POSTED_LIMIT = os.getenv("POSTED_LIMIT", "24h")
-RESULT_LIMIT = int(os.getenv("RESULT_LIMIT", "20"))
-EMAIL_MODE = os.getenv("EMAIL_MODE", "prefer_email").lower()
+import sys
+
+args = sys.argv
+
+SEARCH_QUERY = args[1] if len(args) > 1 else ""
+POSTED_LIMIT = args[2] if len(args) > 2 else "24h"
+EMAIL_MODE = args[3] if len(args) > 3 else "prefer_email"
+RESULT_LIMIT = int(args[4]) if len(args) > 4 else 20
+LOCATION_KEYWORDS = args[5] if len(args) > 5 else ""
+
+TELEGRAM_BOT_TOKEN = args[6] if len(args) > 6 else ""
+TELEGRAM_CHAT_ID = args[7] if len(args) > 7 else ""
 
 ACTOR_ID = "harvestapi~linkedin-post-search"
 
@@ -31,8 +40,8 @@ ACTOR_ID = "harvestapi~linkedin-post-search"
 # TELEGRAM
 # ==============================
 def send_telegram(results):
-    token = (os.getenv("TELEGRAM_BOT_TOKEN") or "").strip()
-    chat_id = (os.getenv("TELEGRAM_CHAT_ID") or "").strip()
+    token = TELEGRAM_BOT_TOKEN.strip()
+chat_id = TELEGRAM_CHAT_ID.strip()
 
     if not token or not chat_id:
         print("TELEGRAM: Missing token or chat_id", file=sys.stderr)
