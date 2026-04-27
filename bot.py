@@ -1,3 +1,8 @@
+# =====================================
+# LinkedIn Hiring Radar Bot
+# Version: v1.0.0-bot
+# =====================================
+
 import requests
 import time
 import subprocess
@@ -10,6 +15,9 @@ BASE_URL = f"https://api.telegram.org/bot{TOKEN}"
 last_update_id = None
 
 
+# ==============================
+# TELEGRAM API
+# ==============================
 def get_updates():
     global last_update_id
 
@@ -19,18 +27,23 @@ def get_updates():
         url += f"?offset={last_update_id + 1}"
 
     res = requests.get(url).json()
-
     return res.get("result", [])
 
 
 def send_message(chat_id, text):
     requests.post(
         BASE_URL + "/sendMessage",
-        data={"chat_id": chat_id, "text": text}
+        data={
+            "chat_id": chat_id,
+            "text": text
+        }
     )
 
 
-def process_query(query, chat_id):
+# ==============================
+# CORE LOGIC
+# ==============================
+def run_search(query, chat_id):
     result = subprocess.run(
         [
             sys.executable,
@@ -56,6 +69,8 @@ def process_query(query, chat_id):
         send_message(chat_id, "⚠️ No jobs found")
         return
 
+    send_message(chat_id, f"🔎 Results for: {query}")
+
     for r in results[:3]:
         msg = f"""🔥 Job Lead
 
@@ -67,8 +82,48 @@ def process_query(query, chat_id):
 🔗 {r['link']}"""
 
         send_message(chat_id, msg)
-        time.sleep(0.5)
+        time.sleep(0.4)
 
+
+# ==============================
+# MESSAGE HANDLER
+# ==============================
+def handle_message(text, chat_id):
+
+    text = text.lower().strip()
+
+    # Help
+    if text in ["/start", "/help"]:
+        send_message(chat_id,
+        """🤖 LinkedIn Hiring Radar Bot
+
+Usage:
+/search product owner
+/search business analyst pune
+
+Just type your role and I’ll fetch jobs 🔍"""
+        )
+        return
+
+    # Command mode
+    if text.startswith("/search"):
+        query = text.replace("/search", "").strip()
+
+        if not query:
+            send_message(chat_id, "❗ Please provide a role. Example:\n/search product owner")
+            return
+
+        run_search(query, chat_id)
+        return
+
+    # Free text mode (auto search)
+    run_search(text, chat_id)
+
+
+# ==============================
+# LOOP
+# ==============================
+print("🤖 Bot started...")
 
 while True:
     updates = get_updates()
@@ -81,6 +136,6 @@ while True:
             text = u["message"].get("text", "")
 
             if text:
-                process_query(text, chat_id)
+                handle_message(text, chat_id)
 
     time.sleep(2)
