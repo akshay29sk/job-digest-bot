@@ -81,7 +81,7 @@ refresh_btn = col2.button("🔄 Refresh (API Call)")
 # BACKEND
 # ==============================
 def run_backend():
-    token = st.secrets.get("TELEGRAM_TOKEN")
+    token = st.secrets.get("TELEGRAM_BOT_TOKEN")
     chat_id = st.secrets.get("TELEGRAM_CHAT_ID")
 
     if not token or not chat_id:
