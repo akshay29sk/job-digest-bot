@@ -61,7 +61,11 @@ mode = st.selectbox(
     ["prefer_email", "only_email", "both", "no_email"]
 )
 
-limit = 20
+ limit = st.selectbox(
+    "📊 Max Results",
+    [10, 20, 50, 100],
+    index=1
+)
 
 # ==============================
 # CACHE
